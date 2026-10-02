@@ -1,0 +1,9 @@
+# Used by GoReleaser: the binary is already built for the target platform.
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/kropka /kropka
+ENV KROPKA_BIND=0.0.0.0
+EXPOSE 8080
+VOLUME ["/data"]
+ENTRYPOINT ["/kropka"]
+CMD ["/data"]

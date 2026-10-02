@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e0e10">
+  <meta name="color-scheme" content="dark light">
+  <title>kropka</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="logo" href="#/" aria-label="Root folder"><span class="dot"></span></a>
+    <nav class="crumbs" id="crumbs" aria-label="Folder path"></nav>
+    <button class="icon-btn" id="sort" type="button" aria-label="Change sort order"></button>
+    <button class="icon-btn" id="refresh" type="button" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+    </button>
+  </header>
+
+  <main id="main">
+    <p class="status" id="status">Loading…</p>
+    <section id="folders" class="folders" hidden></section>
+    <section id="grid" class="grid" hidden></section>
+    <section id="files" class="files" hidden></section>
+  </main>
+
+  <div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Preview">
+    <div class="viewer-top">
+      <span class="viewer-count" id="v-count"></span>
+      <span class="viewer-name" id="v-name"></span>
+      <a class="icon-btn" id="v-download" aria-label="Download">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+      </a>
+      <button class="icon-btn" id="v-close" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="viewer-stage" id="v-stage"></div>
+    <button class="nav prev" id="v-prev" type="button" aria-label="Previous">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <button class="nav next" id="v-next" type="button" aria-label="Next">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

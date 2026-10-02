@@ -1,0 +1,165 @@
+package server
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"testing/fstest"
+
+	"github.com/tkabala/kropka/internal/auth"
+	"github.com/tkabala/kropka/internal/fsview"
+)
+
+const token = "test-token"
+
+func newServer(t *testing.T, tok string) (*httptest.Server, string) {
+	t.Helper()
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	if err := os.MkdirAll(filepath.Join(root, "pics"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(base, "secret.txt"), []byte("secret"), 0o644)
+	os.WriteFile(filepath.Join(root, "pics", "a.jpg"), []byte("0123456789"), 0o644)
+	os.WriteFile(filepath.Join(root, "evil.html"), []byte("<script>alert(1)</script>"), 0o644)
+
+	r, err := fsview.Open(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close() })
+	ui := fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ui")}}
+	ts := httptest.NewServer(New(Config{Root: r, Token: tok, UI: ui, Version: "test"}))
+	t.Cleanup(ts.Close)
+	return ts, base
+}
+
+func client(t *testing.T) *http.Client {
+	jar, _ := cookiejar.New(nil)
+	return &http.Client{Jar: jar}
+}
+
+func TestAuthFlow(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := client(t)
+
+	res, _ := c.Get(ts.URL + "/api/ls")
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no token: %d; want 401", res.StatusCode)
+	}
+	res, _ = c.Get(ts.URL + "/?t=wrong")
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong token: %d; want 401", res.StatusCode)
+	}
+
+	// Correct token: redirected to a token-free URL, cookie set.
+	noFollow := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	res, _ = noFollow.Get(ts.URL + "/?" + auth.QueryParam + "=" + token)
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("token: %d; want 303", res.StatusCode)
+	}
+	if loc := res.Header.Get("Location"); strings.Contains(loc, token) {
+		t.Errorf("redirect keeps token in URL: %s", loc)
+	}
+
+	res, _ = c.Get(ts.URL + "/api/ls")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("with cookie: %d; want 200", res.StatusCode)
+	}
+}
+
+func authed(t *testing.T, ts *httptest.Server) *http.Client {
+	c := client(t)
+	if _, err := c.Get(ts.URL + "/?t=" + token); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestList(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+	res, _ := c.Get(ts.URL + "/api/ls?path=pics")
+	var body struct {
+		Entries []fsview.Entry `json:"entries"`
+	}
+	json.NewDecoder(res.Body).Decode(&body)
+	if len(body.Entries) != 1 || body.Entries[0].Name != "a.jpg" || body.Entries[0].Kind != fsview.KindImage {
+		t.Fatalf("entries = %+v", body.Entries)
+	}
+}
+
+func TestListFile(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+	res, _ := c.Get(ts.URL + "/api/ls?path=pics/a.jpg")
+	var body struct {
+		Error string `json:"error"`
+	}
+	json.NewDecoder(res.Body).Decode(&body)
+	if res.StatusCode != http.StatusBadRequest || body.Error != fsview.ErrNotDir.Error() {
+		t.Fatalf("ls on a file: %d %q; want 400 %q", res.StatusCode, body.Error, fsview.ErrNotDir)
+	}
+}
+
+func TestTraversalBlocked(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+	for _, p := range []string{
+		"/raw/../secret.txt",
+		"/raw/%2e%2e/secret.txt",
+		"/raw/pics/%2e%2e/%2e%2e/secret.txt",
+		"/raw/..%2fsecret.txt",
+		"/api/ls?path=..",
+		"/api/ls?path=pics/../..",
+	} {
+		res, err := c.Get(ts.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		if res.StatusCode == http.StatusOK || strings.Contains(string(b), "secret") {
+			t.Errorf("%s: status %d, body %q", p, res.StatusCode, b)
+		}
+	}
+}
+
+func TestRawRangeAndSandbox(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+
+	req, _ := http.NewRequest("GET", ts.URL+"/raw/pics/a.jpg", nil)
+	req.Header.Set("Range", "bytes=2-4")
+	res, _ := c.Do(req)
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusPartialContent || string(b) != "234" {
+		t.Errorf("range: %d %q; want 206 \"234\"", res.StatusCode, b)
+	}
+
+	res, _ = c.Get(ts.URL + "/raw/evil.html")
+	if csp := res.Header.Get("Content-Security-Policy"); !strings.HasPrefix(csp, "sandbox") {
+		t.Errorf("html served without sandbox CSP: %q", csp)
+	}
+
+	res, _ = c.Get(ts.URL + "/raw/pics/a.jpg?dl=1")
+	if cd := res.Header.Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
+		t.Errorf("dl=1: Content-Disposition %q", cd)
+	}
+}
+
+func TestNoAuth(t *testing.T) {
+	ts, _ := newServer(t, "")
+	res, _ := http.Get(ts.URL + "/api/ls")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("no-auth: %d", res.StatusCode)
+	}
+	if res.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Error("missing Referrer-Policy")
+	}
+}
