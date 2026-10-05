@@ -155,6 +155,15 @@ func (r *Root) List(rel string) ([]Entry, error) {
 
 // OpenFile opens a regular file for reading.
 func (r *Root) OpenFile(rel string) (*os.File, fs.FileInfo, error) {
+	// Check before opening: open(2) on a FIFO blocks until a writer appears,
+	// and opening a device can have side effects.
+	st, err := r.root.Stat(rel)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, nil, fs.ErrNotExist
+	}
 	f, err := r.root.Open(rel)
 	if err != nil {
 		return nil, nil, err

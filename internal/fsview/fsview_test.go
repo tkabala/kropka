@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // layout:
@@ -120,5 +121,25 @@ func TestOpenFileCannotEscape(t *testing.T) {
 	f.Close()
 	if _, _, err := r.OpenFile("sub"); err == nil {
 		t.Error("OpenFile on a directory should fail")
+	}
+}
+
+func TestOpenFileRejectsFIFOWithoutBlocking(t *testing.T) {
+	r := setup(t, false)
+	if err := mkfifo(filepath.Join(r.Dir(), "pipe")); err != nil {
+		t.Skipf("mkfifo not supported here: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := r.OpenFile("pipe")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("OpenFile on a FIFO: got %v, want ErrNotExist", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OpenFile blocked on a FIFO")
 	}
 }
