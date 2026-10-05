@@ -81,20 +81,25 @@ function ext(name) {
 
 // ---------- routing ----------
 
+// Split before decoding: hashFor encodes every segment, so a literal "?view="
+// can only be the separator, never part of a folder name.
 function parseHash() {
-  let h = decodeURIComponent(location.hash.slice(1) || "/");
+  let h = location.hash.slice(1) || "/";
   let view = null;
   const q = h.indexOf("?view=");
   if (q >= 0) {
-    view = h.slice(q + 6);
+    view = safeDecode(h.slice(q + 6));
     h = h.slice(0, q);
   }
-  const path = h.replace(/^\/+|\/+$/g, "") || ".";
+  const path = safeDecode(h).replace(/^\/+|\/+$/g, "") || ".";
   return { path, view };
 }
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch { return s; } // e.g. a hand-typed "50%"
+}
 function hashFor(path, view) {
-  const p = path === "." ? "/" : "/" + path;
-  return "#" + encodeURI(p) + (view ? "?view=" + encodeURIComponent(view) : "");
+  const p = path === "." ? "/" : "/" + encPath(path);
+  return "#" + p + (view ? "?view=" + encodeURIComponent(view) : "");
 }
 
 async function route() {
