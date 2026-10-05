@@ -22,6 +22,8 @@ $ kropka
 
 - **One binary, zero config.** The UI is embedded; no runtime, no config files.
 - **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close.
+- **Fast grids.** Large photos get small thumbnails, generated on first view and cached on
+  disk, so a folder of 20 MB renders loads like a folder of 40 KB ones.
 - **Video that seeks.** Files are streamed with HTTP Range support.
 - **Safe by default.** Localhost only, random access token, read only, no path traversal
   (enforced by Go's `os.Root`), untrusted files served in a CSP sandbox.
@@ -63,6 +65,8 @@ kropka [flags] [dir]
   --hidden     show dotfiles
   --qr         print a QR code even without --lan
   --quiet      do not log requests
+  --cache-dir  where to keep thumbnails                     (user cache dir, env KROPKA_CACHE_DIR)
+  --no-thumbs  show original images in the grid
   --version    print version
 ```
 
@@ -86,7 +90,8 @@ kropka is meant for short-lived, personal sharing.
   pointing outside the served directory cannot be followed.
 - Files are served with `Content-Security-Policy: sandbox`, so an HTML or SVG file in the
   folder cannot run scripts as kropka.
-- There is no upload, rename or delete.
+- There is no upload, rename or delete. The only thing kropka writes is its thumbnail cache,
+  outside the served folder.
 - Traffic is plain HTTP. Over untrusted networks, use an SSH tunnel or a VPN.
 
 ## Development
@@ -104,7 +109,7 @@ pieces fit together.
 
 ## Roadmap
 
-- [ ] Thumbnails with an on-disk cache (fast grids for large photos)
+- [x] Thumbnails with an on-disk cache (fast grids for large photos)
 - [ ] Live reload: new files appear without refreshing (fsnotify + SSE)
 - [ ] Markdown rendering and syntax highlighting
 - [ ] Pinch-zoom and pan in the viewer

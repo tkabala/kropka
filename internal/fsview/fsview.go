@@ -153,16 +153,24 @@ func (r *Root) List(rel string) ([]Entry, error) {
 	return out, nil
 }
 
+// StatFile returns the info of a regular file; anything else reports fs.ErrNotExist.
+func (r *Root) StatFile(rel string) (fs.FileInfo, error) {
+	st, err := r.root.Stat(rel)
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fs.ErrNotExist
+	}
+	return st, nil
+}
+
 // OpenFile opens a regular file for reading.
 func (r *Root) OpenFile(rel string) (*os.File, fs.FileInfo, error) {
 	// Check before opening: open(2) on a FIFO blocks until a writer appears,
 	// and opening a device can have side effects.
-	st, err := r.root.Stat(rel)
-	if err != nil {
+	if _, err := r.StatFile(rel); err != nil {
 		return nil, nil, err
-	}
-	if !st.Mode().IsRegular() {
-		return nil, nil, fs.ErrNotExist
 	}
 	f, err := r.root.Open(rel)
 	if err != nil {

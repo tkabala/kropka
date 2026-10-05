@@ -11,6 +11,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
                                                     ├── GET /api/info        folder name, version
                                                     ├── GET /api/ls?path=    directory listing (JSON)
                                                     ├── GET /raw/{path...}   file bytes (Range, ETag, sandbox CSP)
+                                                    ├── GET /thumb/{path...} grid thumbnail, or 307 to /raw/
                                                     └── GET /                embedded UI
                                                     │
                                                     ▼
@@ -27,6 +28,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
 | `cmd/kropka` | Flags and env vars, picking a free port, startup banner and QR code, graceful shutdown |
 | `internal/fsview` | Read-only, traversal-safe access to the directory; listing; MIME and kind detection |
 | `internal/auth` | Random token, token-to-cookie exchange, request guard |
+| `internal/thumb` | Thumbnail generation, on-disk cache, EXIF orientation |
 | `internal/server` | HTTP routes, security headers, request log |
 | `internal/ui` | Embedded frontend (`static/`) |
 
@@ -58,12 +60,19 @@ the phone's back button close the viewer and walk up folders naturally.
 approachable and the binary small. If it grows (Markdown, code highlighting, PhotoSwipe), the
 plan is Vite building into `internal/ui/static`, still embedded.
 
+**Thumbnails: one size, cached forever per file version.** Grid tiles are square and
+cropped, so a thumbnail only needs its short side sharp: 480 px covers a phone at 3x and a
+desktop at 2x, and one size keeps the cache small. Thumbnails are JPEG, or PNG when the image
+has transparency, stored under the user cache dir by hash(root, path, size, mtime). The UI
+adds `?v=<mtime>` to the URL, which lets the browser cache them as immutable. Decoding is
+bounded by a worker pool and a budget of pixels held in memory; `singleflight` makes a burst
+of requests for one image do the work once. Files under 64 KB, images already smaller than
+a thumbnail, images over 50 MP and formats Go cannot decode (SVG, AVIF, HEIC) are redirected
+to `/raw/`. Thumbnails unused for 30 days are pruned at startup.
+
 ## Planned components
 
-- **Thumbnails** — `GET /thumb/{path}?w=320`. Decode with `image/*` and
-  `golang.org/x/image`, resize, cache as JPEG under the user cache dir keyed by
-  hash(path, mtime, size, width). Bounded worker pool plus `singleflight` so a burst of
-  requests for the same image does the work once. Video frames via `ffmpeg` when present.
+- **Video thumbnails** — a frame via `ffmpeg` when present, through the same cache.
 - **Live reload** — `GET /api/events?path=` as Server-Sent Events. A watcher (`fsnotify`)
   subscribes only to folders someone is viewing (reference counted), debounces bursts, and
   tells clients to reload the listing.

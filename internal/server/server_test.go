@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/tkabala/kropka/internal/auth"
 	"github.com/tkabala/kropka/internal/fsview"
+	"github.com/tkabala/kropka/internal/thumb"
 )
 
 const token = "test-token"
@@ -34,8 +38,12 @@ func newServer(t *testing.T, tok string) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { r.Close() })
+	thumbs, err := thumb.New(r, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	ui := fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ui")}}
-	ts := httptest.NewServer(New(Config{Root: r, Token: tok, UI: ui, Version: "test"}))
+	ts := httptest.NewServer(New(Config{Root: r, Thumbs: thumbs, Token: tok, UI: ui, Version: "test"}))
 	t.Cleanup(ts.Close)
 	return ts, base
 }
@@ -116,6 +124,8 @@ func TestTraversalBlocked(t *testing.T) {
 		"/raw/%2e%2e/secret.txt",
 		"/raw/pics/%2e%2e/%2e%2e/secret.txt",
 		"/raw/..%2fsecret.txt",
+		"/thumb/../secret.txt",
+		"/thumb/%2e%2e/secret.txt",
 		"/api/ls?path=..",
 		"/api/ls?path=pics/../..",
 	} {
@@ -161,5 +171,50 @@ func TestNoAuth(t *testing.T) {
 	}
 	if res.Header.Get("Referrer-Policy") != "no-referrer" {
 		t.Error("missing Referrer-Policy")
+	}
+}
+
+func TestThumb(t *testing.T) {
+	ts, base := newServer(t, token)
+	c := authed(t, ts)
+	noFollow := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	// A large image gets a thumbnail.
+	img := image.NewRGBA(image.Rect(0, 0, 900, 600))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i * 7919 % 251)
+	}
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100})
+	os.WriteFile(filepath.Join(base, "root", "pics", "big photo.jpg"), buf.Bytes(), 0o644)
+
+	res, _ := c.Get(ts.URL + "/thumb/pics/big%20photo.jpg?v=1")
+	got, _, err := image.DecodeConfig(res.Body)
+	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "image/jpeg" || err != nil {
+		t.Fatalf("thumb: %d %q %v", res.StatusCode, res.Header.Get("Content-Type"), err)
+	}
+	if got.Height != thumb.Size {
+		t.Errorf("thumb height %d; want %d", got.Height, thumb.Size)
+	}
+	if cc := res.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("versioned thumb Cache-Control %q; want immutable", cc)
+	}
+
+	// A small file is not worth a thumbnail: redirect to the original.
+	res, _ = noFollow.Get(ts.URL + "/thumb/pics/a.jpg")
+	if res.StatusCode != http.StatusTemporaryRedirect || res.Header.Get("Location") != "/raw/pics/a.jpg" {
+		t.Errorf("small: %d %q; want 307 to /raw/pics/a.jpg", res.StatusCode, res.Header.Get("Location"))
+	}
+
+	for p, want := range map[string]int{
+		"/thumb/pics/missing.jpg": http.StatusNotFound,
+		"/thumb/.hidden.jpg":      http.StatusNotFound,
+		"/thumb/pics":             http.StatusNotFound,
+		"/thumb/":                 http.StatusBadRequest,
+	} {
+		res, _ := noFollow.Get(ts.URL + p)
+		if res.StatusCode != want {
+			t.Errorf("%s: %d; want %d", p, res.StatusCode, want)
+		}
 	}
 }

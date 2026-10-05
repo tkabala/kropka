@@ -46,6 +46,10 @@ function join(dir, name) {
 function rawURL(dir, name, download) {
   return "/raw/" + encPath(join(dir, name)) + (download ? "?dl=1" : "");
 }
+// Thumbnails are versioned by mtime so the browser can cache them for good.
+function thumbURL(dir, entry) {
+  return "/thumb/" + encPath(join(dir, entry.name)) + "?v=" + entry.mtime;
+}
 function el(tag, attrs = {}, html) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -198,7 +202,10 @@ function renderList() {
     const b = el("button", { class: "tile", type: "button", "data-name": m.name, "aria-label": m.name, title: m.name });
     const src = rawURL(state.path, m.name);
     if (m.kind === "image") {
-      b.append(el("img", { src, alt: "", loading: "lazy", decoding: "async" }));
+      const img = el("img", { src: thumbURL(state.path, m), alt: "", loading: "lazy", decoding: "async" });
+      // If the thumbnail fails (decode error, server busy), show the original.
+      img.addEventListener("error", () => { img.src = src; }, { once: true });
+      b.append(img);
     } else {
       b.append(el("video", { src: src + "#t=0.1", preload: "metadata", muted: "", playsinline: "" }));
       b.append(el("span", { class: "tile-badge" }, ICONS.play));

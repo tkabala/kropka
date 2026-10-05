@@ -25,6 +25,7 @@ import (
 	"github.com/tkabala/kropka/internal/auth"
 	"github.com/tkabala/kropka/internal/fsview"
 	"github.com/tkabala/kropka/internal/server"
+	"github.com/tkabala/kropka/internal/thumb"
 	"github.com/tkabala/kropka/internal/ui"
 )
 
@@ -32,15 +33,17 @@ import (
 var version = "dev"
 
 type options struct {
-	port    int
-	bind    string
-	lan     bool
-	noAuth  bool
-	token   string
-	hidden  bool
-	qr      bool
-	quiet   bool
-	version bool
+	port     int
+	bind     string
+	lan      bool
+	noAuth   bool
+	token    string
+	hidden   bool
+	qr       bool
+	quiet    bool
+	version  bool
+	noThumbs bool
+	cacheDir string
 }
 
 func main() {
@@ -63,6 +66,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&o.hidden, "hidden", false, "show dotfiles and dot-directories")
 	fs.BoolVar(&o.qr, "qr", false, "print a QR code even without --lan")
 	fs.BoolVar(&o.quiet, "quiet", false, "do not log requests")
+	fs.BoolVar(&o.noThumbs, "no-thumbs", false, "show original images in the grid instead of generating thumbnails")
+	fs.StringVar(&o.cacheDir, "cache-dir", os.Getenv("KROPKA_CACHE_DIR"), "where to keep thumbnails (default: the user cache dir)")
 	fs.BoolVar(&o.version, "version", false, "print version and exit")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "kropka %s — serve . to your phone\n\nUsage: kropka [flags] [dir]\n\nFlags:\n", version)
@@ -94,6 +99,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	defer root.Close()
 
+	var thumbs *thumb.Service
+	if !o.noThumbs {
+		thumbs, err = openThumbs(o.cacheDir, root)
+		if err != nil {
+			// Not fatal: the grid falls back to the originals.
+			fmt.Fprintln(stderr, "kropka: thumbnails disabled:", err)
+		}
+	}
+
 	token := o.token
 	if !o.noAuth && token == "" {
 		if token, err = auth.NewToken(); err != nil {
@@ -124,6 +138,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	srv := &http.Server{
 		Handler: server.New(server.Config{
 			Root:    root,
+			Thumbs:  thumbs,
 			Token:   token,
 			UI:      ui.FS(),
 			Version: version,
@@ -148,6 +163,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+func openThumbs(dir string, root *fsview.Root) (*thumb.Service, error) {
+	if dir == "" {
+		var err error
+		if dir, err = thumb.DefaultDir(); err != nil {
+			return nil, err
+		}
+	}
+	return thumb.New(root, dir)
 }
 
 // listen binds to port, or the next free one (up to 20 tries) if it is taken.

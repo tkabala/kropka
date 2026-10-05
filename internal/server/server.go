@@ -8,18 +8,21 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"time"
 
 	"github.com/tkabala/kropka/internal/auth"
 	"github.com/tkabala/kropka/internal/fsview"
+	"github.com/tkabala/kropka/internal/thumb"
 )
 
 // Config configures the HTTP handler.
 type Config struct {
 	Root    *fsview.Root
-	Token   string // empty disables auth
-	UI      fs.FS  // static frontend
+	Thumbs  *thumb.Service // nil serves originals in place of thumbnails
+	Token   string         // empty disables auth
+	UI      fs.FS          // static frontend
 	Version string
 	Logger  *log.Logger
 }
@@ -31,6 +34,7 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/ls", s.handleList)
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 	mux.HandleFunc("GET /raw/{path...}", s.handleRaw)
+	mux.HandleFunc("GET /thumb/{path...}", s.handleThumb)
 	mux.Handle("GET /", uiHandler(cfg.UI))
 
 	var h http.Handler = mux
@@ -103,6 +107,62 @@ func (s *srv) handleRaw(w http.ResponseWriter, r *http.Request) {
 		h.Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.PathEscape(info.Name()))
 	}
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+}
+
+// handleThumb serves a grid-sized thumbnail, or redirects to the original when
+// there is none (small files, SVG, formats Go cannot decode).
+func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
+	rel, err := s.cfg.Root.Clean(r.PathValue("path"))
+	if err == nil && rel == "." {
+		err = fsview.ErrInvalidPath
+	}
+	if err != nil {
+		code := statusFor(err)
+		http.Error(w, http.StatusText(code), code)
+		return
+	}
+	if s.cfg.Thumbs == nil {
+		redirectRaw(w, r, rel)
+		return
+	}
+	p, err := s.cfg.Thumbs.Get(r.Context(), rel)
+	switch {
+	case errors.Is(err, thumb.ErrPassthrough):
+		redirectRaw(w, r, rel)
+		return
+	case r.Context().Err() != nil:
+		return // client went away
+	case err != nil:
+		code := statusFor(err)
+		http.Error(w, http.StatusText(code), code)
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	// The UI adds ?v=<mtime>, so each file version has its own URL and can be
+	// cached for good; re-rendering the grid then costs no requests at all.
+	if r.URL.Query().Has("v") {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "private, no-cache")
+	}
+	// No name: ServeContent sniffs JPEG or PNG from the bytes.
+	http.ServeContent(w, r, "", info.ModTime(), f)
+}
+
+func redirectRaw(w http.ResponseWriter, r *http.Request, rel string) {
+	u := url.URL{Path: "/raw/" + rel}
+	w.Header().Set("Cache-Control", "private, no-cache")
+	http.Redirect(w, r, u.EscapedPath(), http.StatusTemporaryRedirect)
 }
 
 func uiHandler(ui fs.FS) http.Handler {
