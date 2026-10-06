@@ -83,9 +83,10 @@ kropka [flags] [dir]
 kropka is meant for short-lived, personal sharing.
 
 - It binds to `127.0.0.1` unless you pass `--lan` or `--bind`.
-- Every request needs the token. It is exchanged for an `HttpOnly`, `SameSite=Strict`
+- Every request needs the token. It is exchanged for an `HttpOnly`, `SameSite=Lax`
   cookie on first visit and removed from the URL; `Referrer-Policy: no-referrer` keeps it
-  from leaking to other sites.
+  from leaking to other sites. Lax rather than Strict, so links opened from a QR scanner
+  or another app work; kropka has no state-changing requests for Strict to protect.
 - All file access goes through [`os.Root`](https://pkg.go.dev/os#Root): `..` and symlinks
   pointing outside the served directory cannot be followed.
 - Files are served with `Content-Security-Policy: sandbox`, so an HTML or SVG file in the

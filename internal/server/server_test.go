@@ -76,6 +76,11 @@ func TestAuthFlow(t *testing.T) {
 	if loc := res.Header.Get("Location"); strings.Contains(loc, token) {
 		t.Errorf("redirect keeps token in URL: %s", loc)
 	}
+	// Strict would be withheld on the redirect when the link is opened from
+	// another app, e.g. a QR scanner.
+	if cs := res.Cookies(); len(cs) != 1 || !cs[0].HttpOnly || cs[0].SameSite != http.SameSiteLaxMode {
+		t.Errorf("cookie = %+v; want one HttpOnly, SameSite=Lax cookie", cs)
+	}
 
 	res, _ = c.Get(ts.URL + "/api/ls")
 	if res.StatusCode != http.StatusOK {

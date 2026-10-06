@@ -49,7 +49,11 @@ func Middleware(token string, next http.Handler) http.Handler {
 				Value:    token,
 				Path:     "/",
 				HttpOnly: true,
-				SameSite: http.SameSiteStrictMode,
+				// Lax, not Strict: the first visit usually comes from another
+				// app (a QR scanner, a chat link), and browsers withhold Strict
+				// cookies on redirects of a cross-site navigation, so the
+				// redirect below would land on "Access denied".
+				SameSite: http.SameSiteLaxMode,
 				Secure:   r.TLS != nil,
 			})
 			u := *r.URL
