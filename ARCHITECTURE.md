@@ -10,6 +10,7 @@ browser (SPA, hash routing)
 logRequests → securityHeaders → auth.Middleware → ServeMux
                                                     ├── GET /api/info        folder name, version
                                                     ├── GET /api/ls?path=    directory listing (JSON)
+                                                    ├── GET /api/events?path= change notifications (SSE)
                                                     ├── GET /raw/{path...}   file bytes (Range, ETag, sandbox CSP)
                                                     ├── GET /thumb/{path...} grid thumbnail, or 307 to /raw/
                                                     └── GET /                embedded UI
@@ -29,6 +30,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
 | `internal/fsview` | Read-only, traversal-safe access to the directory; listing; MIME and kind detection |
 | `internal/auth` | Random token, token-to-cookie exchange, request guard |
 | `internal/thumb` | Thumbnail generation, on-disk cache, EXIF orientation |
+| `internal/watch` | Watching viewed folders (`fsnotify`), reference counting, debouncing |
 | `internal/server` | HTTP routes, security headers, request log |
 | `internal/ui` | Embedded frontend (`static/`) |
 
@@ -75,9 +77,21 @@ other failure (a full disk, an unwritable cache) is logged and redirected too, s
 never needs a fallback of its own. Failures are remembered per file version, so a corrupt
 image is not decoded on every request. Thumbnails unused for 30 days are pruned at startup.
 
+**Live reload: the server says "changed", the client re-lists.** The page opens an
+`EventSource` on `/api/events?path=` for the folder on screen. The server watches only folders
+someone is viewing (reference counted, so ten tabs on one folder cost one OS watch) and sends a
+bare `change` event; the client then fetches `/api/ls` as usual, so there is one code path for
+listings and nothing to keep in sync. Events are coalesced: a notification goes out 300 ms
+after the folder goes quiet, or 2 s after the first event if it never does. Attribute-only
+changes and hidden files are ignored. The stream is closed while the tab is hidden, because
+browsers allow only six HTTP/1.1 connections per server and a phone shouldn't hold one in the
+background; on return the page reconnects and refreshes once. If watching is unavailable
+(no inotify watches left, an unsupported platform), the server answers `204`, which makes
+`EventSource` stop for good, and the page works as before. On shutdown the watcher is closed
+first, which ends every stream, so `Shutdown` doesn't wait for connections that never go idle.
+Network filesystems (NFS, SMB, FUSE mounts) often don't deliver change events; there the page
+still refreshes when it regains focus.
+
 ## Planned components
 
 - **Video thumbnails** — a frame via `ffmpeg` when present, through the same cache.
-- **Live reload** — `GET /api/events?path=` as Server-Sent Events. A watcher (`fsnotify`)
-  subscribes only to folders someone is viewing (reference counted), debounces bursts, and
-  tells clients to reload the listing.

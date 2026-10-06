@@ -4,6 +4,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -15,12 +16,18 @@ import (
 	"github.com/tkabala/kropka/internal/auth"
 	"github.com/tkabala/kropka/internal/fsview"
 	"github.com/tkabala/kropka/internal/thumb"
+	"github.com/tkabala/kropka/internal/watch"
 )
+
+// ssePing keeps idle event streams alive through proxies and SSH tunnels, and
+// notices clients that went away without closing the connection.
+var ssePing = 30 * time.Second
 
 // Config configures the HTTP handler.
 type Config struct {
 	Root    *fsview.Root
 	Thumbs  *thumb.Service // nil serves originals in place of thumbnails
+	Watch   *watch.Watcher // nil disables live reload
 	Token   string         // empty disables auth
 	UI      fs.FS          // static frontend
 	Version string
@@ -33,6 +40,7 @@ func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/ls", s.handleList)
 	mux.HandleFunc("GET /api/info", s.handleInfo)
+	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("GET /raw/{path...}", s.handleRaw)
 	mux.HandleFunc("GET /thumb/{path...}", s.handleThumb)
 	mux.Handle("GET /", uiHandler(cfg.UI))
@@ -71,6 +79,65 @@ func (s *srv) handleList(w http.ResponseWriter, r *http.Request) {
 		"path":    rel,
 		"entries": entries,
 	})
+}
+
+// handleEvents is a Server-Sent Events stream that sends "change" whenever the
+// listing of the folder may have changed. The client then reloads it.
+func (s *srv) handleEvents(w http.ResponseWriter, r *http.Request) {
+	rel, err := s.cfg.Root.Clean(r.URL.Query().Get("path"))
+	if err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	// 204 tells EventSource to stop for good rather than reconnect: the page
+	// works as before, just without live updates.
+	if s.cfg.Watch == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	changes, stop, err := s.cfg.Watch.Subscribe(rel)
+	if err != nil {
+		if code := statusFor(err); code != http.StatusInternalServerError {
+			writeErr(w, code, err)
+			return
+		}
+		// Out of inotify watches, the watcher closing for shutdown, ...
+		if s.cfg.Logger != nil {
+			s.cfg.Logger.Printf("live reload for %s: %v", rel, err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	defer stop()
+
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Accel-Buffering", "no") // nginx would hold events back otherwise
+	w.WriteHeader(http.StatusOK)
+	rc := http.NewResponseController(w)
+	if rc.Flush() != nil {
+		return
+	}
+	ping := time.NewTicker(ssePing)
+	defer ping.Stop()
+	for {
+		var msg string
+		select {
+		case <-r.Context().Done():
+			return
+		case _, ok := <-changes:
+			if !ok {
+				return // folder removed, or shutting down
+			}
+			msg = "event: change\ndata:\n\n"
+		case <-ping.C:
+			msg = ": ping\n\n"
+		}
+		if _, err := io.WriteString(w, msg); err != nil || rc.Flush() != nil {
+			return
+		}
+	}
 }
 
 // handleRaw streams a file. http.ServeContent handles Range (video seeking),
@@ -206,6 +273,9 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach Flush on the real writer.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 func logRequests(l *log.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

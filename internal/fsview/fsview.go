@@ -119,7 +119,7 @@ func (r *Root) List(rel string) ([]Entry, error) {
 	out := make([]Entry, 0, len(dirents))
 	for _, d := range dirents {
 		name := d.Name()
-		if !r.showHidden && strings.HasPrefix(name, ".") {
+		if r.Hidden(name) {
 			continue
 		}
 		// Stat through the root so symlinks are followed only if they stay inside it.
@@ -151,6 +151,23 @@ func (r *Root) List(rel string) ([]Entry, error) {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+// Hidden reports whether a file named name is left out of listings.
+func (r *Root) Hidden(name string) bool {
+	return !r.showHidden && strings.HasPrefix(name, ".")
+}
+
+// StatDir returns the info of a directory; a file reports ErrNotDir.
+func (r *Root) StatDir(rel string) (fs.FileInfo, error) {
+	st, err := r.root.Stat(rel)
+	if err != nil {
+		return nil, err
+	}
+	if !st.IsDir() {
+		return nil, ErrNotDir
+	}
+	return st, nil
 }
 
 // StatFile returns the info of a regular file; anything else reports fs.ErrNotExist.

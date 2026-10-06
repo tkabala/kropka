@@ -27,6 +27,7 @@ import (
 	"github.com/tkabala/kropka/internal/server"
 	"github.com/tkabala/kropka/internal/thumb"
 	"github.com/tkabala/kropka/internal/ui"
+	"github.com/tkabala/kropka/internal/watch"
 )
 
 // version is set at build time: -ldflags "-X main.version=v1.2.3".
@@ -108,6 +109,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 
+	watcher, err := watch.New(root)
+	if err != nil {
+		// Not fatal: the page still reloads on refresh and when refocused.
+		fmt.Fprintln(stderr, "kropka: live reload disabled:", err)
+		watcher = nil
+	} else {
+		defer watcher.Close()
+	}
+
 	token := o.token
 	if !o.noAuth && token == "" {
 		if token, err = auth.NewToken(); err != nil {
@@ -139,12 +149,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Handler: server.New(server.Config{
 			Root:    root,
 			Thumbs:  thumbs,
+			Watch:   watcher,
 			Token:   token,
 			UI:      ui.FS(),
 			Version: version,
 			Logger:  logger,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if watcher != nil {
+		// Event streams never go idle on their own; closing the watcher ends
+		// them so Shutdown doesn't wait out its timeout.
+		srv.RegisterOnShutdown(func() { watcher.Close() })
 	}
 
 	printBanner(stdout, root.Dir(), bind, port, token, o.lan || o.qr)

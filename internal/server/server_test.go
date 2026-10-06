@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"image"
 	"image/jpeg"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -15,10 +17,12 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/tkabala/kropka/internal/auth"
 	"github.com/tkabala/kropka/internal/fsview"
 	"github.com/tkabala/kropka/internal/thumb"
+	"github.com/tkabala/kropka/internal/watch"
 )
 
 const token = "test-token"
@@ -43,9 +47,14 @@ func newServer(t *testing.T, tok string) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	w, err := watch.New(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ui := fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ui")}}
-	ts := httptest.NewServer(New(Config{Root: r, Thumbs: thumbs, Token: tok, UI: ui, Version: "test"}))
+	ts := httptest.NewServer(New(Config{Root: r, Thumbs: thumbs, Watch: w, Token: tok, UI: ui, Version: "test", Logger: log.New(io.Discard, "", 0)}))
 	t.Cleanup(ts.Close)
+	t.Cleanup(func() { w.Close() }) // runs first: ends open event streams, which ts.Close would wait for
 	return ts, base
 }
 
@@ -253,5 +262,73 @@ func TestThumbCacheFailure(t *testing.T) {
 	res, _ := noFollow.Get(ts.URL + "/thumb/pics/big.jpg?v=1")
 	if res.StatusCode != http.StatusTemporaryRedirect || res.Header.Get("Location") != "/raw/pics/big.jpg" {
 		t.Errorf("unwritable cache: %d %q; want 307 to /raw/pics/big.jpg", res.StatusCode, res.Header.Get("Location"))
+	}
+}
+
+func TestEvents(t *testing.T) {
+	ts, base := newServer(t, token)
+	c := authed(t, ts)
+
+	for q, want := range map[string]int{"missing": 404, "pics/a.jpg": 400, "..": 400} {
+		res, err := c.Get(ts.URL + "/api/events?path=" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("events for %q: %d; want %d", q, res.StatusCode, want)
+		}
+	}
+
+	res, err := c.Get(ts.URL + "/api/events?path=pics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if ct := res.Header.Get("Content-Type"); res.StatusCode != http.StatusOK || ct != "text/event-stream" {
+		t.Fatalf("events: %d %q", res.StatusCode, ct)
+	}
+	os.WriteFile(filepath.Join(base, "root", "pics", "b.jpg"), []byte("new"), 0o644)
+
+	lines := make(chan string)
+	go func() {
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				t.Fatal("stream ended without a change event")
+			}
+			if l == "event: change" {
+				return
+			}
+		case <-timeout:
+			t.Fatal("no change event")
+		}
+	}
+}
+
+func TestEventsDisabled(t *testing.T) {
+	r, err := fsview.Open(t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	ts := httptest.NewServer(New(Config{Root: r, UI: fstest.MapFS{}}))
+	defer ts.Close()
+	res, err := http.Get(ts.URL + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	// 204 makes EventSource give up instead of reconnecting forever.
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("events without a watcher: %d; want 204", res.StatusCode)
 	}
 }

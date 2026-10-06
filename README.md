@@ -24,6 +24,8 @@ $ kropka
 - **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close.
 - **Fast grids.** Large photos get small thumbnails, generated on first view and cached on
   disk, so a folder of 20 MB renders loads like a folder of 40 KB ones.
+- **Live.** New and changed files show up on their own while you watch, so you can leave
+  the page open while a job writes its output.
 - **Video that seeks.** Files are streamed with HTTP Range support.
 - **Safe by default.** Localhost only, random access token, read only, no path traversal
   (enforced by Go's `os.Root`), untrusted files served in a CSP sandbox.
@@ -111,7 +113,7 @@ pieces fit together.
 ## Roadmap
 
 - [x] Thumbnails with an on-disk cache (fast grids for large photos)
-- [ ] Live reload: new files appear without refreshing (fsnotify + SSE)
+- [x] Live reload: new files appear without refreshing (fsnotify + SSE)
 - [ ] Markdown rendering and syntax highlighting
 - [ ] Pinch-zoom and pan in the viewer
 - [ ] Download a folder as `.zip`

@@ -25,6 +25,7 @@ const state = {
   sort: load("sort", "newest"),
   index: -1,
   loadedPath: null,
+  failed: false, // the last load ended in an error message, not a listing
   pushed: false, // viewer was opened by a tap, so "back" returns to the folder
 };
 
@@ -114,6 +115,7 @@ async function route() {
   const { path, view } = parseHash();
   if (path !== state.loadedPath) {
     closeViewer(true);
+    watch(path); // before listing, so nothing changes unseen in between
     await loadDir(path);
   }
   if (view) openViewer(view);
@@ -134,10 +136,18 @@ async function loadDir(path, { keepScroll = false } = {}) {
   try {
     res = await fetch("/api/ls?path=" + encodeURIComponent(path), { cache: "no-store" });
   } catch {
-    showStatus("Can’t reach kropka. Is it still running?");
+    // failed: the listing below the message is stale, so the next good reload
+    // must redraw (and clear the message) even if nothing changed.
+    if (path === state.path) {
+      state.failed = true;
+      showStatus("Can’t reach kropka. Is it still running?");
+    }
     return;
   }
+  // A reload that finishes after the user moved to another folder.
+  if (path !== state.path) return;
   if (res.status === 401) {
+    state.failed = true;
     showStatus("Session expired. Open the link printed in the terminal again.");
     return;
   }
@@ -145,6 +155,7 @@ async function loadDir(path, { keepScroll = false } = {}) {
     const body = await res.json().catch(() => ({}));
     state.entries = [];
     state.loadedPath = path;
+    state.failed = true;
     renderList();
     showStatus(
       res.status === 404 ? "This folder doesn’t exist."
@@ -153,10 +164,72 @@ async function loadDir(path, { keepScroll = false } = {}) {
     return;
   }
   const data = await res.json();
-  state.entries = data.entries || [];
+  const entries = data.entries || [];
+  // Rebuilding the grid makes video tiles fetch their metadata again, so
+  // leave it alone when a reload finds nothing new.
+  if (keepScroll && path === state.loadedPath && !state.failed && sameEntries(entries, state.entries)) return;
+  state.entries = entries;
+  state.failed = false;
   state.loadedPath = path;
   renderList();
   if (!keepScroll) window.scrollTo(0, 0);
+}
+
+function sameEntries(a, b) {
+  return a.length === b.length && a.every((e, i) =>
+    e.name === b[i].name && e.kind === b[i].kind && e.size === b[i].size && e.mtime === b[i].mtime);
+}
+
+// Reloads the listing in place, keeping the viewer (if open) on the same file.
+async function refresh() {
+  const open = $("viewer").hidden ? null : state.viewable[state.index];
+  await loadDir(state.path, { keepScroll: true });
+  if (open && !$("viewer").hidden) syncViewer(open);
+}
+
+function syncViewer(item) {
+  const i = state.viewable.findIndex((e) => e.name === item.name);
+  if (i >= 0) {
+    state.index = i;
+    updateViewerNav();
+    return;
+  }
+  // The file was deleted or renamed: show whatever took its place.
+  if (state.viewable.length === 0) {
+    closeViewer(false);
+    return;
+  }
+  state.index = Math.min(state.index, state.viewable.length - 1);
+  history.replaceState(null, "", hashFor(state.path, state.viewable[state.index].name));
+  showItem();
+}
+
+// ---------- live reload ----------
+
+// One stream per tab, for the folder on screen. It is closed while the tab is
+// hidden: browsers allow only a few connections per server, and a phone
+// shouldn't keep one open in the background.
+let events = null;
+
+function watch(path) {
+  unwatch();
+  if (document.visibilityState !== "visible" || typeof EventSource === "undefined") return;
+  const es = new EventSource("/api/events?path=" + encodeURIComponent(path));
+  let opened = false;
+  es.addEventListener("open", () => {
+    // After a reconnect, changes may have been missed while disconnected.
+    if (opened) refresh();
+    opened = true;
+  });
+  es.addEventListener("change", () => {
+    if (state.path === path) refresh();
+  });
+  events = es;
+}
+
+function unwatch() {
+  if (events) events.close();
+  events = null;
 }
 
 function showStatus(msg) {
@@ -294,10 +367,8 @@ async function showItem() {
   stage.replaceChildren();
 
   $("v-name").textContent = item.name;
-  $("v-count").textContent = state.index + 1 + " / " + state.viewable.length;
   $("v-download").href = rawURL(state.path, item.name, true);
-  $("v-prev").hidden = state.index === 0;
-  $("v-next").hidden = state.index === state.viewable.length - 1;
+  updateViewerNav();
 
   const src = rawURL(state.path, item.name);
   if (item.kind === "image") {
@@ -319,6 +390,12 @@ async function showItem() {
       pre.textContent = "Couldn’t load this file.";
     }
   }
+}
+
+function updateViewerNav() {
+  $("v-count").textContent = state.index + 1 + " / " + state.viewable.length;
+  $("v-prev").hidden = state.index === 0;
+  $("v-next").hidden = state.index === state.viewable.length - 1;
 }
 
 function preloadNeighbors() {
@@ -397,7 +474,7 @@ function init() {
     renderSortButton();
     renderList();
   });
-  $("refresh").addEventListener("click", () => loadDir(state.path, { keepScroll: true }));
+  $("refresh").addEventListener("click", refresh);
 
   const openFrom = (e) => {
     const b = e.target.closest("[data-name]");
@@ -422,10 +499,13 @@ function init() {
     else if (e.key === "ArrowLeft") go(-1);
   });
 
-  // Coming back to the tab (e.g. after generating new files): refresh quietly.
+  // Live updates pause while the tab is hidden; catch up when it comes back.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && $("viewer").hidden) {
-      loadDir(state.path, { keepScroll: true });
+    if (document.visibilityState !== "visible") {
+      unwatch();
+    } else if (state.loadedPath !== null) {
+      watch(state.path);
+      refresh();
     }
   });
 
