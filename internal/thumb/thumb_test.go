@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -372,9 +373,7 @@ func TestThumbnailLargerThanOriginal(t *testing.T) {
 }
 
 func TestUnwritableCache(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
-	}
+	needReadOnlyDirs(t)
 	dir := t.TempDir()
 	root, err := fsview.Open(dir, false)
 	if err != nil {
@@ -391,9 +390,7 @@ func TestUnwritableCache(t *testing.T) {
 }
 
 func TestCacheWriteError(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
-	}
+	needReadOnlyDirs(t)
 	s, dir := setup(t)
 	writeJPEG(t, filepath.Join(dir, "a.jpg"), noisy(720, 540), nil)
 	os.Chmod(s.dir, 0o500)
@@ -419,5 +416,14 @@ func TestDecodedBytes(t *testing.T) {
 		if got := decodedBytes(image.Config{ColorModel: c.m, Width: 10, Height: 10}); got != c.want {
 			t.Errorf("%T: %d; want %d", c.m, got, c.want)
 		}
+	}
+}
+
+// needReadOnlyDirs skips a test that relies on a read-only directory refusing
+// new files: root ignores the mode, and on Windows it is only an attribute.
+func needReadOnlyDirs(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("read-only directories are not enforced here")
 	}
 }

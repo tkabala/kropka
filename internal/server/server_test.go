@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -220,8 +221,9 @@ func TestThumb(t *testing.T) {
 }
 
 func TestThumbCacheFailure(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+	// Root ignores the mode, and on Windows it is only an attribute.
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("read-only directories are not enforced here")
 	}
 	ts, base := newServer(t, token)
 	c := authed(t, ts)
