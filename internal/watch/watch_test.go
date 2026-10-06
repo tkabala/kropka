@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -219,13 +220,29 @@ func TestSymlinkAlias(t *testing.T) {
 	expect(t, alias, "alias after the real name was dropped")
 }
 
+// Windows doesn't report a watched folder being moved, and fsnotify finds the
+// watch to remove by the file ID now at its path, so the old watch can't be
+// let go once another folder takes the name.
+func skipMovedFolders(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows can't tell a watched folder was moved away")
+	}
+}
+
 func TestRenameRecreate(t *testing.T) {
+	skipMovedFolders(t)
 	w, dir := newWatcher(t)
 	c := subscribe(t, w, "sub")
 	if err := os.Rename(filepath.Join(dir, "sub"), filepath.Join(dir, "old")); err != nil {
 		t.Skip("can't rename a watched folder here:", err)
 	}
-	for range c {
+	closed := time.After(5 * time.Second)
+	for open := true; open; {
+		select {
+		case _, open = <-c:
+		case <-closed:
+			t.Fatal("channel not closed after the folder was moved away")
+		}
 	}
 	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
 		t.Fatal(err)
@@ -239,6 +256,7 @@ func TestRenameRecreate(t *testing.T) {
 
 // Renaming a parent moves a watched folder without telling its watch.
 func TestParentRenamed(t *testing.T) {
+	skipMovedFolders(t)
 	w, dir := newWatcher(t)
 	if err := os.MkdirAll(filepath.Join(dir, "a", "b"), 0o755); err != nil {
 		t.Fatal(err)

@@ -90,7 +90,8 @@ background; on return the page reconnects and refreshes once. If watching is una
 `EventSource` stop for good, and the page works as before. On shutdown the watcher is closed
 first, which ends every stream, so `Shutdown` doesn't wait for connections that never go idle.
 Network filesystems (NFS, SMB, FUSE mounts) often don't deliver change events; there the page
-still refreshes when it regains focus.
+still refreshes when it regains focus. Windows doesn't report a watched folder itself being
+renamed or moved away, so a page showing it isn't told until it refreshes.
 
 ## Planned components
 
