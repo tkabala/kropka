@@ -38,7 +38,7 @@ func newServer(t *testing.T, tok string) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { r.Close() })
-	thumbs, err := thumb.New(r, t.TempDir())
+	thumbs, err := thumb.New(r, filepath.Join(base, "cache"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,5 +216,35 @@ func TestThumb(t *testing.T) {
 		if res.StatusCode != want {
 			t.Errorf("%s: %d; want %d", p, res.StatusCode, want)
 		}
+	}
+}
+
+func TestThumbCacheFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	ts, base := newServer(t, token)
+	c := authed(t, ts)
+	noFollow := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	img := image.NewRGBA(image.Rect(0, 0, 900, 600))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i * 7919 % 251)
+	}
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100})
+	os.WriteFile(filepath.Join(base, "root", "pics", "big.jpg"), buf.Bytes(), 0o644)
+
+	// The cache becomes read-only after startup (a full disk behaves alike).
+	dirs, _ := filepath.Glob(filepath.Join(base, "cache", "v*"))
+	for _, d := range dirs {
+		os.Chmod(d, 0o500)
+		t.Cleanup(func() { os.Chmod(d, 0o700) })
+	}
+
+	// Not 403: the original is readable, so show it.
+	res, _ := noFollow.Get(ts.URL + "/thumb/pics/big.jpg?v=1")
+	if res.StatusCode != http.StatusTemporaryRedirect || res.Header.Get("Location") != "/raw/pics/big.jpg" {
+		t.Errorf("unwritable cache: %d %q; want 307 to /raw/pics/big.jpg", res.StatusCode, res.Header.Get("Location"))
 	}
 }

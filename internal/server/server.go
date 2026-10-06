@@ -132,20 +132,25 @@ func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	case r.Context().Err() != nil:
 		return // client went away
-	case err != nil:
-		code := statusFor(err)
+	case err != nil && statusFor(err) != http.StatusInternalServerError:
+		code := statusFor(err) // missing, hidden or unreadable file
 		http.Error(w, http.StatusText(code), code)
+		return
+	case err != nil:
+		// The original may still be fine (a full disk, an unwritable cache):
+		// show it rather than a broken tile.
+		s.thumbFailed(w, r, rel, err)
 		return
 	}
 	f, err := os.Open(p)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		s.thumbFailed(w, r, rel, err) // pruned or removed since Get
 		return
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		s.thumbFailed(w, r, rel, err)
 		return
 	}
 	// The UI adds ?v=<mtime>, so each file version has its own URL and can be
@@ -157,6 +162,13 @@ func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 	}
 	// No name: ServeContent sniffs JPEG or PNG from the bytes.
 	http.ServeContent(w, r, "", info.ModTime(), f)
+}
+
+func (s *srv) thumbFailed(w http.ResponseWriter, r *http.Request, rel string, err error) {
+	if s.cfg.Logger != nil {
+		s.cfg.Logger.Printf("thumbnail for %s: %v", rel, err)
+	}
+	redirectRaw(w, r, rel)
 }
 
 func redirectRaw(w http.ResponseWriter, r *http.Request, rel string) {

@@ -65,10 +65,15 @@ cropped, so a thumbnail only needs its short side sharp: 480 px covers a phone a
 desktop at 2x, and one size keeps the cache small. Thumbnails are JPEG, or PNG when the image
 has transparency, stored under the user cache dir by hash(root, path, size, mtime). The UI
 adds `?v=<mtime>` to the URL, which lets the browser cache them as immutable. Decoding is
-bounded by a worker pool and a budget of pixels held in memory; `singleflight` makes a burst
-of requests for one image do the work once. Files under 64 KB, images already smaller than
-a thumbnail, images over 50 MP and formats Go cannot decode (SVG, AVIF, HEIC) are redirected
-to `/raw/`. Thumbnails unused for 30 days are pruned at startup.
+bounded by a worker pool and a budget of decoded bytes (estimated from the colour model, so
+a 16-bit PNG counts eight times a grayscale JPEG), and large decodes are handed back to the
+OS at once; `singleflight` makes a burst of requests for one image do the work once. Files
+under 64 KB, images already smaller than a thumbnail, images over 50 MP, formats Go cannot
+decode (SVG, AVIF, HEIC) and thumbnails that would be no smaller than the original are
+redirected to `/raw/`; the UI loads files under 64 KB and SVGs from `/raw/` directly. Any
+other failure (a full disk, an unwritable cache) is logged and redirected too, so the grid
+never needs a fallback of its own. Failures are remembered per file version, so a corrupt
+image is not decoded on every request. Thumbnails unused for 30 days are pruned at startup.
 
 ## Planned components
 

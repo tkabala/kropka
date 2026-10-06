@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
 	"io/fs"
@@ -313,6 +314,110 @@ func TestPrune(t *testing.T) {
 		_, err := os.Stat(filepath.Join(cache, p))
 		if exists := err == nil; exists != keep {
 			t.Errorf("%s: exists=%v; want %v", p, exists, keep)
+		}
+	}
+}
+
+func TestFailureRemembered(t *testing.T) {
+	s, dir := setup(t)
+	// Valid header, garbage after: DecodeConfig passes, Decode fails.
+	writeJPEG(t, filepath.Join(dir, "a.jpg"), noisy(720, 540), nil)
+	b, _ := os.ReadFile(filepath.Join(dir, "a.jpg"))
+	os.WriteFile(filepath.Join(dir, "broken.jpg"), b[:len(b)/2], 0o644)
+
+	if _, err := s.Get(context.Background(), "broken.jpg"); !errors.Is(err, ErrPassthrough) {
+		t.Fatalf("first Get: %v; want ErrPassthrough", err)
+	}
+	info, _ := s.root.StatFile("broken.jpg")
+	key := s.key("broken.jpg", info)
+	if err := s.failed(key); !errors.Is(err, ErrPassthrough) {
+		t.Fatalf("failure not remembered: %v", err)
+	}
+
+	// Other failures are retried after a while.
+	s.fail(key, ErrCache)
+	s.mu.Lock()
+	f := s.failures[key]
+	f.until = time.Now().Add(-time.Second)
+	s.failures[key] = f
+	s.mu.Unlock()
+	if err := s.failed(key); err != nil {
+		t.Fatalf("expired failure still reported: %v", err)
+	}
+}
+
+func TestThumbnailLargerThanOriginal(t *testing.T) {
+	s, dir := setup(t)
+	// A paletted PNG stores a byte per pixel; its RGBA thumbnail, blended by
+	// scaling and kept as PNG for the transparency, takes far more.
+	pal := color.Palette{color.NRGBA{}}
+	for i := 1; i < 256; i++ {
+		pal = append(pal, color.NRGBA{byte(i), byte(i * 7), byte(i * 13), 255})
+	}
+	img := image.NewPaletted(image.Rect(0, 0, 600, 600), pal)
+	r := rand.New(rand.NewPCG(3, 4))
+	for i := range img.Pix {
+		img.Pix[i] = byte(r.IntN(256))
+	}
+	var buf bytes.Buffer
+	png.Encode(&buf, img)
+	os.WriteFile(filepath.Join(dir, "p.png"), buf.Bytes(), 0o644)
+
+	if _, err := s.Get(context.Background(), "p.png"); !errors.Is(err, ErrPassthrough) {
+		t.Fatalf("err %v; want ErrPassthrough for a thumbnail bigger than the original", err)
+	}
+	if n := s.generated.Load(); n != 0 {
+		t.Fatalf("stored %d thumbnails; want 0", n)
+	}
+}
+
+func TestUnwritableCache(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	root, err := fsview.Open(dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	cache := t.TempDir()
+	os.MkdirAll(filepath.Join(cache, version), 0o700)
+	os.Chmod(filepath.Join(cache, version), 0o500)
+	defer os.Chmod(filepath.Join(cache, version), 0o700)
+	if _, err := New(root, cache); err == nil {
+		t.Fatal("New succeeded with a read-only cache dir")
+	}
+}
+
+func TestCacheWriteError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	s, dir := setup(t)
+	writeJPEG(t, filepath.Join(dir, "a.jpg"), noisy(720, 540), nil)
+	os.Chmod(s.dir, 0o500)
+	defer os.Chmod(s.dir, 0o700)
+	_, err := s.Get(context.Background(), "a.jpg")
+	// Not ErrPermission: that would read as "the image is not readable".
+	if !errors.Is(err, ErrCache) || errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("err %v; want ErrCache only", err)
+	}
+}
+
+func TestDecodedBytes(t *testing.T) {
+	for _, c := range []struct {
+		m    color.Model
+		want int64
+	}{
+		{color.GrayModel, 100},
+		{color.YCbCrModel, 300},
+		{color.NRGBAModel, 400},
+		{color.NRGBA64Model, 800},
+		{color.Palette{color.Black}, 400},
+	} {
+		if got := decodedBytes(image.Config{ColorModel: c.m, Width: 10, Height: 10}); got != c.want {
+			t.Errorf("%T: %d; want %d", c.m, got, c.want)
 		}
 	}
 }
