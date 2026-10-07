@@ -118,6 +118,20 @@ func TestList(t *testing.T) {
 	}
 }
 
+// The UI titles the page with the root folder's name, so it must not be a full Windows path.
+func TestInfo(t *testing.T) {
+	ts, _ := newServer(t, token)
+	res, _ := authed(t, ts).Get(ts.URL + "/api/info")
+	var body struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	json.NewDecoder(res.Body).Decode(&body)
+	if body.Name != "root" || body.Version != "test" {
+		t.Fatalf("info = %+v; want name root, version test", body)
+	}
+}
+
 func TestListFile(t *testing.T) {
 	ts, _ := newServer(t, token)
 	c := authed(t, ts)

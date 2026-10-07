@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/tkabala/kropka/internal/auth"
@@ -58,7 +58,7 @@ type srv struct{ cfg Config }
 
 func (s *srv) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name":    path.Base(s.cfg.Root.Dir()),
+		"name":    filepath.Base(s.cfg.Root.Dir()),
 		"version": s.cfg.Version,
 	})
 }
