@@ -88,6 +88,9 @@ func (s *srv) handleList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"path":    rel,
 		"entries": entries,
+		// The grid then asks /thumb/ for videos too, instead of loading each
+		// one's first frame itself.
+		"videoThumbs": s.cfg.Thumbs != nil && s.cfg.Thumbs.Videos(),
 	})
 }
 
@@ -448,7 +451,8 @@ func fmtCount(n int) string {
 }
 
 // handleThumb serves a grid-sized thumbnail, or redirects to the original when
-// there is none (small files, SVG, formats Go cannot decode).
+// there is none (small files, SVG, formats Go cannot decode). Videos without
+// one (no ffmpeg, a damaged file) get a 404.
 func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 	rel, err := s.cfg.Root.Clean(r.PathValue("path"))
 	if err == nil && rel == "." {
@@ -460,13 +464,13 @@ func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Thumbs == nil {
-		redirectRaw(w, r, rel)
+		noThumb(w, r, rel)
 		return
 	}
 	p, err := s.cfg.Thumbs.Get(r.Context(), rel)
 	switch {
 	case errors.Is(err, thumb.ErrPassthrough):
-		redirectRaw(w, r, rel)
+		noThumb(w, r, rel)
 		return
 	case r.Context().Err() != nil:
 		return // client went away
@@ -505,6 +509,18 @@ func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 func (s *srv) thumbFailed(w http.ResponseWriter, r *http.Request, rel string, err error) {
 	if s.cfg.Logger != nil {
 		s.cfg.Logger.Printf("thumbnail for %s: %v", rel, err)
+	}
+	noThumb(w, r, rel)
+}
+
+// noThumb sends an image to the original, which can stand in for its
+// thumbnail. A video can't: the grid's <img> gets a 404 and shows the video
+// itself instead.
+func noThumb(w http.ResponseWriter, r *http.Request, rel string) {
+	if fsview.KindOf(rel) == fsview.KindVideo {
+		w.Header().Set("Cache-Control", "private, no-cache")
+		http.Error(w, "no thumbnail", http.StatusNotFound)
+		return
 	}
 	redirectRaw(w, r, rel)
 }

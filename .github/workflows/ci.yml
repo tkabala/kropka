@@ -16,6 +16,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
+      # The video thumbnail tests skip without ffmpeg. Homebrew's would add
+      # minutes to every macOS run, so there they skip.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
       - run: go vet ./...
       - run: go test -race ./...
 

@@ -3,7 +3,8 @@
 // A thumbnail is generated once per file version (path, size, mtime) and kept
 // under the user cache dir. Images that are small already, too big to decode
 // safely, or in a format Go cannot read report ErrPassthrough: the caller
-// should serve the original instead.
+// should serve the original instead. Videos get a frame grabbed by ffmpeg
+// when it is available (SetFFmpeg), and ErrPassthrough otherwise.
 package thumb
 
 import (
@@ -82,6 +83,8 @@ type Service struct {
 	mu       sync.Mutex
 	failures map[string]failure // by key, so a new file version is tried afresh
 
+	ffmpeg string // video thumbnails are off when empty
+
 	generated atomic.Int64 // thumbnails written, for tests
 }
 
@@ -126,7 +129,8 @@ func (s *Service) Get(ctx context.Context, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if info.Size() < MinBytes {
+	// A small image is its own thumbnail. A video never is, however small.
+	if video := fsview.KindOf(rel) == fsview.KindVideo; (video && s.ffmpeg == "") || (!video && info.Size() < MinBytes) {
 		return "", ErrPassthrough
 	}
 	key := s.key(rel, info)
@@ -213,37 +217,23 @@ func (s *Service) generate(ctx context.Context, rel string, size int64, dst stri
 	}
 	defer f.Close()
 
-	cfg, format, err := image.DecodeConfig(f)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrPassthrough, err) // SVG, AVIF, HEIC, not an image...
+	video := fsview.KindOf(rel) == fsview.KindVideo
+	var out *image.RGBA
+	if video {
+		out, err = s.videoThumb(ctx, f)
+	} else {
+		out, err = s.imageThumb(ctx, f)
 	}
-	if int64(cfg.Width)*int64(cfg.Height) > maxPixels || min(cfg.Width, cfg.Height) <= Size {
-		return ErrPassthrough
-	}
-
-	select {
-	case s.cpu <- struct{}{}:
-		defer func() { <-s.cpu }()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	out, err := s.decodeScaled(ctx, f, cfg)
 	if err != nil {
 		return err
 	}
-	if format == "jpeg" {
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return err
-		}
-		out = orient(out, exifOrientation(f))
-	}
-
 	b, err := encode(out)
 	if err != nil {
 		return err
 	}
 	// Transparent images become PNG, which can outgrow a lossy original.
-	if int64(len(b)) >= size {
+	// A video's thumbnail is worth having at any size: <img> can't show the video.
+	if !video && int64(len(b)) >= size {
 		return ErrPassthrough
 	}
 	if err := writeAtomic(dst, b); err != nil {
@@ -251,6 +241,35 @@ func (s *Service) generate(ctx context.Context, rel string, size int64, dst stri
 	}
 	s.generated.Add(1)
 	return nil
+}
+
+// imageThumb decodes the image in f and scales it to thumbnail size, upright.
+func (s *Service) imageThumb(ctx context.Context, f *os.File) (*image.RGBA, error) {
+	cfg, format, err := image.DecodeConfig(f)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrPassthrough, err) // SVG, AVIF, HEIC, not an image...
+	}
+	if int64(cfg.Width)*int64(cfg.Height) > maxPixels || min(cfg.Width, cfg.Height) <= Size {
+		return nil, ErrPassthrough
+	}
+
+	select {
+	case s.cpu <- struct{}{}:
+		defer func() { <-s.cpu }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	out, err := s.decodeScaled(ctx, f, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if format == "jpeg" {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		out = orient(out, exifOrientation(f))
+	}
+	return out, nil
 }
 
 // decodeScaled decodes the image in f and scales it to thumbnail size. The

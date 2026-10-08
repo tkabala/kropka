@@ -22,6 +22,7 @@ const state = {
   viewable: [], // entries the viewer can step through, in display order
   sort: load("sort", "newest"),
   index: -1,
+  videoThumbs: false, // the server can make video thumbnails (ffmpeg)
   loadedPath: null,
   failed: false, // the last load ended in an error message, not a listing
   pushed: false, // viewer was opened by a tap, so "back" returns to the folder
@@ -48,9 +49,10 @@ function rawURL(dir, name, download) {
 // Files smaller than this never get a thumbnail (thumb.MinBytes on the server).
 const THUMB_MIN_BYTES = 64 << 10;
 // Thumbnails are versioned by mtime so the browser can cache them for good.
-// Small files and SVGs would only be redirected to the original, so skip that.
+// Small images and SVGs would only be redirected to the original, so skip
+// that. Videos always ask: none is too small to need one.
 function thumbURL(dir, entry) {
-  if (entry.size < THUMB_MIN_BYTES || entry.mime === "image/svg+xml") return rawURL(dir, entry.name);
+  if (entry.kind === "image" && (entry.size < THUMB_MIN_BYTES || entry.mime === "image/svg+xml")) return rawURL(dir, entry.name);
   return "/thumb/" + encPath(join(dir, entry.name)) + "?v=" + entry.mtime;
 }
 function el(tag, attrs = {}, html) {
@@ -167,10 +169,16 @@ async function loadDir(path, { keepScroll = false } = {}) {
   // leave it alone when a reload finds nothing new.
   if (keepScroll && path === state.loadedPath && !state.failed && sameEntries(entries, state.entries)) return;
   state.entries = entries;
+  state.videoThumbs = data.videoThumbs === true;
   state.failed = false;
   state.loadedPath = path;
   renderList();
   if (!keepScroll) window.scrollTo(0, 0);
+}
+
+// A muted, metadata-only <video> whose first frame stands in for a thumbnail.
+function posterVideo(src) {
+  return el("video", { src: src + "#t=0.1", preload: "metadata", muted: "", playsinline: "" });
 }
 
 function sameEntries(a, b) {
@@ -314,9 +322,14 @@ function renderList() {
       // No error fallback: the server already redirects to the original when
       // it has no thumbnail, and retrying would download the original twice.
       b.append(el("img", { src: thumbURL(state.path, m), alt: "", loading: "lazy", decoding: "async" }));
+    } else if (state.videoThumbs) {
+      // A 404 means no thumbnail for this one (a damaged file, say): let the
+      // browser find a frame itself, as it does without ffmpeg.
+      const img = el("img", { src: thumbURL(state.path, m), alt: "", loading: "lazy", decoding: "async" });
+      img.addEventListener("error", () => img.replaceWith(posterVideo(src)), { once: true });
+      b.append(img, el("span", { class: "tile-badge" }, ICONS.play));
     } else {
-      b.append(el("video", { src: src + "#t=0.1", preload: "metadata", muted: "", playsinline: "" }));
-      b.append(el("span", { class: "tile-badge" }, ICONS.play));
+      b.append(posterVideo(src), el("span", { class: "tile-badge" }, ICONS.play));
     }
     return b;
   }));

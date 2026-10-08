@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -45,6 +46,7 @@ type options struct {
 	version  bool
 	noThumbs bool
 	cacheDir string
+	ffmpeg   string
 }
 
 func main() {
@@ -69,6 +71,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&o.quiet, "quiet", false, "do not log requests")
 	fs.BoolVar(&o.noThumbs, "no-thumbs", false, "show original images in the grid instead of generating thumbnails")
 	fs.StringVar(&o.cacheDir, "cache-dir", os.Getenv("KROPKA_CACHE_DIR"), "where to keep thumbnails (default: the user cache dir)")
+	fs.StringVar(&o.ffmpeg, "ffmpeg", os.Getenv("KROPKA_FFMPEG"), `ffmpeg for video thumbnails, or "off" (default: ffmpeg on PATH, if any)`)
 	fs.BoolVar(&o.version, "version", false, "print version and exit")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "kropka %s — serve . to your phone\n\nUsage: kropka [flags] [dir]\n\nFlags:\n", version)
@@ -106,6 +109,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			// Not fatal: the grid falls back to the originals.
 			fmt.Fprintln(stderr, "kropka: thumbnails disabled:", err)
+		} else if ffmpeg, err := findFFmpeg(o.ffmpeg); err != nil {
+			fmt.Fprintln(stderr, "kropka: video thumbnails disabled:", err)
+		} else {
+			thumbs.SetFFmpeg(ffmpeg)
 		}
 	}
 
@@ -189,6 +196,20 @@ func openThumbs(dir string, root *fsview.Root) (*thumb.Service, error) {
 		}
 	}
 	return thumb.New(root, dir)
+}
+
+// findFFmpeg resolves --ffmpeg: a path or a name to look up on PATH, "off",
+// or empty for "ffmpeg" if there is one. Only a missing ffmpeg that was asked
+// for by name is an error; without one, videos keep their <video> posters.
+func findFFmpeg(flag string) (string, error) {
+	switch flag {
+	case "off":
+		return "", nil
+	case "":
+		p, _ := exec.LookPath("ffmpeg")
+		return p, nil
+	}
+	return exec.LookPath(flag)
 }
 
 // listen binds to port, or the next free one (up to 20 tries) if it is taken.

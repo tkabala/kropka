@@ -24,7 +24,8 @@ $ kropka
 - **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close,
   pinch or double-tap to zoom.
 - **Fast grids.** Large photos get small thumbnails, generated on first view and cached on
-  disk, so a folder of 20 MB renders loads like a folder of 40 KB ones.
+  disk, so a folder of 20 MB renders loads like a folder of 40 KB ones. With `ffmpeg`
+  installed, videos get one too, a frame from one second in.
 - **Live.** New and changed files show up on their own while you watch, so you can leave
   the page open while a job writes its output.
 - **Video that seeks.** Files are streamed with HTTP Range support.
@@ -74,6 +75,7 @@ kropka [flags] [dir]
   --quiet      do not log requests
   --cache-dir  where to keep thumbnails                     (user cache dir, env KROPKA_CACHE_DIR)
   --no-thumbs  show original images in the grid
+  --ffmpeg     ffmpeg for video thumbnails, or "off"       (ffmpeg on PATH, env KROPKA_FFMPEG)
   --version    print version
 ```
 
@@ -123,7 +125,7 @@ pieces fit together.
 - [x] Markdown rendering and syntax highlighting
 - [x] Pinch-zoom and pan in the viewer
 - [x] Download a folder as `.zip`
-- [ ] Video thumbnails when `ffmpeg` is available
+- [x] Video thumbnails when `ffmpeg` is available
 
 ## License
 

@@ -124,6 +124,15 @@ Media and archives are stored, everything else deflated. If a read fails halfway
 aborts the connection, so the browser reports a failed download rather than saving a truncated
 file.
 
-## Planned components
-
-- **Video thumbnails** — a frame via `ffmpeg` when present, through the same cache.
+**Video thumbnails: ffmpeg when there is one, the browser when not.** When `ffmpeg` is on the
+`PATH` (or given with `--ffmpeg`), a video's thumbnail is a frame from one second in (the first
+is often black), or the first frame of a shorter clip, scaled by ffmpeg and stored in the same
+cache as image thumbnails. ffmpeg never gets a path: it reads the file kropka opened through
+`os.Root` as its stdin, named as a seekable file (`file:/dev/stdin`; `fd:0` on Windows, which
+needs ffmpeg 6.0+), so it can't be pointed outside the served folder and still seeks, as MP4s
+without "faststart" require. Each grab runs in the thumbnail worker pool with a 30 s timeout and
+a cap on its output. `/api/ls` reports `videoThumbs`, and only then does the grid ask `/thumb/`
+for videos; without ffmpeg, or for a file ffmpeg can't read (a `404`, since an `<img>` can't
+show a video the way it can an original image), a tile falls back to a muted `<video>` that
+loads only its metadata and first frame. The Docker image has no ffmpeg, so there videos keep
+those posters.

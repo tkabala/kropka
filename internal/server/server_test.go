@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -30,6 +31,12 @@ import (
 const token = "test-token"
 
 func newServer(t *testing.T, tok string) (*httptest.Server, string) {
+	t.Helper()
+	return newServerFFmpeg(t, tok, "")
+}
+
+// newServerFFmpeg is newServer with video thumbnails by the given ffmpeg.
+func newServerFFmpeg(t *testing.T, tok, ffmpeg string) (*httptest.Server, string) {
 	t.Helper()
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
@@ -52,6 +59,7 @@ func newServer(t *testing.T, tok string) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	thumbs.SetFFmpeg(ffmpeg)
 	w, err := watch.New(r)
 	if err != nil {
 		t.Fatal(err)
@@ -578,5 +586,57 @@ func TestZipMessageNumbers(t *testing.T) {
 		if got := fmtCount(n); got != want {
 			t.Errorf("fmtCount(%d) = %q; want %q", n, got, want)
 		}
+	}
+}
+
+func TestVideoThumb(t *testing.T) {
+	listing := func(c *http.Client, url string) bool {
+		res, err := c.Get(url + "/api/ls?path=")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct{ VideoThumbs bool }
+		json.NewDecoder(res.Body).Decode(&body)
+		return body.VideoThumbs
+	}
+
+	// Without ffmpeg: no thumbnail, and no redirect either, since <img> can't show a video.
+	ts, base := newServer(t, token)
+	os.WriteFile(filepath.Join(base, "root", "clip.mp4"), make([]byte, 100<<10), 0o644)
+	c := authed(t, ts)
+	if listing(c, ts.URL) {
+		t.Error("videoThumbs true without ffmpeg")
+	}
+	res, _ := c.Get(ts.URL + "/thumb/clip.mp4")
+	if res.StatusCode != http.StatusNotFound || res.Header.Get("Cache-Control") != "private, no-cache" {
+		t.Errorf("no ffmpeg: %d %q; want an uncached 404", res.StatusCode, res.Header.Get("Cache-Control"))
+	}
+
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not on PATH")
+	}
+	ts, base = newServerFFmpeg(t, token, ffmpeg)
+	c = authed(t, ts)
+	if !listing(c, ts.URL) {
+		t.Error("videoThumbs false with ffmpeg")
+	}
+	clip := filepath.Join(base, "root", "my clip.mp4")
+	if out, err := exec.Command(ffmpeg, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=25", clip).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	res, _ = c.Get(ts.URL + "/thumb/my%20clip.mp4?v=1")
+	got, _, err := image.DecodeConfig(res.Body)
+	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "image/jpeg" || err != nil {
+		t.Fatalf("video thumb: %d %q %v", res.StatusCode, res.Header.Get("Content-Type"), err)
+	}
+	if got.Width != 640 || got.Height != thumb.Size {
+		t.Errorf("video thumb %dx%d; want 640x%d", got.Width, got.Height, thumb.Size)
+	}
+	// A damaged video: 404, so the grid falls back to the video itself.
+	os.WriteFile(filepath.Join(base, "root", "broken.mp4"), make([]byte, 100<<10), 0o644)
+	res, _ = c.Get(ts.URL + "/thumb/broken.mp4")
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("broken video: %d; want 404", res.StatusCode)
 	}
 }
