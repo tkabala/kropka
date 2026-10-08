@@ -10,11 +10,15 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tkabala/kropka/internal/auth"
 	"github.com/tkabala/kropka/internal/fsview"
+	"github.com/tkabala/kropka/internal/render"
 	"github.com/tkabala/kropka/internal/thumb"
 	"github.com/tkabala/kropka/internal/watch"
 )
@@ -41,6 +45,7 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/ls", s.handleList)
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
+	mux.HandleFunc("GET /api/render", s.handleRender)
 	mux.HandleFunc("GET /raw/{path...}", s.handleRaw)
 	mux.HandleFunc("GET /thumb/{path...}", s.handleThumb)
 	mux.Handle("GET /", uiHandler(cfg.UI))
@@ -138,6 +143,104 @@ func (s *srv) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// renderLimit caps how much of a file the viewer renders; the rest is left to
+// a download.
+var renderLimit int64 = 1 << 20
+
+// handleRender returns a text file as HTML for the viewer: Markdown rendered,
+// code highlighted. The JSON wrapper keeps the HTML from ever being opened as
+// a page in kropka's origin.
+func (s *srv) handleRender(w http.ResponseWriter, r *http.Request) {
+	rel, err := s.cfg.Root.Clean(r.URL.Query().Get("path"))
+	if err == nil && rel == "." {
+		err = fsview.ErrInvalidPath
+	}
+	if err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	f, info, err := s.cfg.Root.OpenFile(rel)
+	if err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	defer f.Close()
+	src, err := io.ReadAll(io.LimitReader(f, renderLimit))
+	if err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	truncated := info.Size() > int64(len(src))
+	if truncated {
+		src = trimPartialRune(src)
+	}
+	out, err := render.File(rel, src, linker{s.cfg.Root})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"html":      out,
+		"truncated": truncated,
+	})
+}
+
+// trimPartialRune drops a UTF-8 sequence cut in half by the size limit.
+func trimPartialRune(b []byte) []byte {
+	for i := 1; i < utf8.UTFMax && i <= len(b); i++ {
+		if utf8.RuneStart(b[len(b)-i]) {
+			if !utf8.FullRune(b[len(b)-i:]) {
+				return b[:len(b)-i]
+			}
+			break
+		}
+	}
+	return b
+}
+
+// linker points links in Markdown files at the UI: folders open as a listing,
+// files the viewer can show open in the viewer, anything else as the raw file.
+type linker struct{ root *fsview.Root }
+
+func (l linker) Link(target string) string {
+	rel, err := l.root.Clean(target)
+	if err != nil {
+		return "#/" // hidden or invalid: don't reveal anything about it
+	}
+	if _, err := l.root.StatDir(rel); err == nil {
+		return hashFor(rel, "")
+	}
+	switch fsview.KindOf(rel) {
+	case fsview.KindImage, fsview.KindVideo, fsview.KindAudio, fsview.KindText:
+		return hashFor(path.Dir(rel), path.Base(rel))
+	}
+	return rawPath(rel)
+}
+
+func (l linker) Image(target string) string { return rawPath(target) }
+
+// hashFor mirrors hashFor in app.js: every segment escaped, so "?view=" can
+// only be the separator.
+func hashFor(dir, view string) string {
+	h := "#/"
+	if dir != "." {
+		segs := strings.Split(dir, "/")
+		for i, s := range segs {
+			segs[i] = url.PathEscape(s)
+		}
+		h += strings.Join(segs, "/")
+	}
+	if view != "" {
+		h += "?view=" + url.PathEscape(view) // not QueryEscape: JS doesn't decode "+"
+	}
+	return h
+}
+
+func rawPath(rel string) string {
+	return (&url.URL{Path: "/raw/" + rel}).EscapedPath()
 }
 
 // handleRaw streams a file. http.ServeContent handles Range (video seeking),
@@ -239,9 +342,8 @@ func (s *srv) thumbFailed(w http.ResponseWriter, r *http.Request, rel string, er
 }
 
 func redirectRaw(w http.ResponseWriter, r *http.Request, rel string) {
-	u := url.URL{Path: "/raw/" + rel}
 	w.Header().Set("Cache-Control", "private, no-cache")
-	http.Redirect(w, r, u.EscapedPath(), http.StatusTemporaryRedirect)
+	http.Redirect(w, r, rawPath(rel), http.StatusTemporaryRedirect)
 }
 
 func uiHandler(ui fs.FS) http.Handler {

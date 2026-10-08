@@ -29,7 +29,9 @@ $ kropka
 - **Video that seeks.** Files are streamed with HTTP Range support.
 - **Safe by default.** Localhost only, random access token, read only, no path traversal
   (enforced by Go's `os.Root`), untrusted files served in a CSP sandbox.
-- **Text and logs** open inline; PDFs open in the browser's viewer; everything else downloads.
+- **Readable text.** Markdown is rendered (tables, task lists, images, links between
+  files), code is syntax highlighted, logs open inline; PDFs open in the browser's viewer;
+  everything else downloads.
 
 ## Install
 
@@ -92,7 +94,8 @@ kropka is meant for short-lived, personal sharing.
 - All file access goes through [`os.Root`](https://pkg.go.dev/os#Root): `..` and symlinks
   pointing outside the served directory cannot be followed.
 - Files are served with `Content-Security-Policy: sandbox`, so an HTML or SVG file in the
-  folder cannot run scripts as kropka.
+  folder cannot run scripts as kropka. Markdown is rendered without its raw HTML and
+  without `javascript:` links.
 - There is no upload, rename or delete. The only thing kropka writes is its thumbnail cache,
   outside the served folder.
 - Traffic is plain HTTP. Over untrusted networks, use an SSH tunnel or a VPN.
@@ -114,7 +117,7 @@ pieces fit together.
 
 - [x] Thumbnails with an on-disk cache (fast grids for large photos)
 - [x] Live reload: new files appear without refreshing (fsnotify + SSE)
-- [ ] Markdown rendering and syntax highlighting
+- [x] Markdown rendering and syntax highlighting
 - [ ] Pinch-zoom and pan in the viewer
 - [ ] Download a folder as `.zip`
 - [ ] Video thumbnails when `ffmpeg` is available

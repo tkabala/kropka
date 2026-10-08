@@ -11,6 +11,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
                                                     ├── GET /api/info        folder name, version
                                                     ├── GET /api/ls?path=    directory listing (JSON)
                                                     ├── GET /api/events?path= change notifications (SSE)
+                                                    ├── GET /api/render?path= text file as HTML (Markdown, code)
                                                     ├── GET /raw/{path...}   file bytes (Range, ETag, sandbox CSP)
                                                     ├── GET /thumb/{path...} grid thumbnail, or 307 to /raw/
                                                     └── GET /                embedded UI
@@ -31,6 +32,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
 | `internal/auth` | Random token, token-to-cookie exchange, request guard |
 | `internal/thumb` | Thumbnail generation, on-disk cache, EXIF orientation |
 | `internal/watch` | Watching viewed folders (`fsnotify`), reference counting, debouncing |
+| `internal/render` | Markdown to HTML (`goldmark`), syntax highlighting (`chroma`) |
 | `internal/server` | HTTP routes, security headers, request log |
 | `internal/ui` | Embedded frontend (`static/`) |
 
@@ -59,8 +61,26 @@ opt-in and prints a QR code.
 the phone's back button close the viewer and walk up folders naturally.
 
 **No frontend toolchain (for now).** The UI is small enough that vanilla JS keeps the repo
-approachable and the binary small. If it grows (Markdown, code highlighting, PhotoSwipe), the
-plan is Vite building into `internal/ui/static`, still embedded.
+approachable. Markdown and code highlighting are done on the server (below) partly to keep it
+that way. If the UI grows (PhotoSwipe), the plan is Vite building into `internal/ui/static`,
+still embedded.
+
+**Markdown and code are rendered on the server.** The viewer asks `/api/render` for a text
+file and puts the HTML it gets into the page. `.md` files go through goldmark with the GFM
+extensions; other files are highlighted by chroma when it knows the language from the file
+name, and escaped as plain text otherwise. Since this HTML lands in kropka's own origin rather
+than the `/raw/` sandbox, it must never carry script: goldmark drops raw HTML and dangerous
+link schemes, highlighting uses CSS classes rather than inline styles, and the page's CSP
+(no inline script or style) would block either anyway. The response is JSON so that the
+endpoint can't be opened as a page. Heading ids get an `md-` prefix so they can't collide with
+the page's own ids; `#heading` links are scrolled to by the UI, since the hash is the route.
+Relative links are resolved on the server: a folder becomes its listing, a file the viewer can
+show opens in the viewer, anything else links to `/raw/`. A link to a hidden file becomes a link
+to the root, which reveals nothing about it. Images go to `/raw/`; remote images are blocked by
+the page's CSP, so a Markdown file can't call home. Like the old inline text view, only the
+first 1 MB is rendered. The highlighting colours in `style.css` are chroma's `github-dark`,
+pasted as CSS, so changing `render.Style` means regenerating them. Chroma's lexers are most
+of the binary's growth (7 MB to 12 MB).
 
 **Thumbnails: one size, cached forever per file version.** Grid tiles are square and
 cropped, so a thumbnail only needs its short side sharp: 480 px covers a phone at 3x and a

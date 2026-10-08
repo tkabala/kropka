@@ -280,18 +280,146 @@ main {
   transition: transform .18s ease-out, opacity .18s;
 }
 .viewer-stage audio { width: min(90vw, 480px); }
-.viewer-stage pre {
+/* Text files: code (highlighted or plain) and rendered Markdown */
+.doc {
   align-self: stretch;
   justify-self: stretch;
-  margin: 0;
   padding: calc(64px + env(safe-area-inset-top)) 16px 32px;
   overflow: auto;
+  overscroll-behavior: contain;
   background: #111;
   color: #ddd;
+  tab-size: 4;
+}
+.doc > pre, .doc-note {
+  margin: 0;
   font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
 }
+.doc-note { color: #888; margin-top: 1.5em; }
+
+.markdown {
+  max-width: 760px;
+  margin: 0 auto;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.markdown > :first-child { margin-top: 0; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
+  margin: 1.6em 0 .6em;
+  line-height: 1.25;
+  color: #fff;
+  scroll-margin-top: calc(64px + env(safe-area-inset-top));
+}
+.markdown h1 { font-size: 1.8em; }
+.markdown h2 { font-size: 1.4em; }
+.markdown h1, .markdown h2 { padding-bottom: .3em; border-bottom: 1px solid #2a2a2e; }
+.markdown h3 { font-size: 1.2em; }
+.markdown h4, .markdown h5, .markdown h6 { font-size: 1em; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown table, .markdown pre { margin: 0 0 1em; }
+.markdown ul, .markdown ol { padding-left: 1.6em; }
+.markdown li + li { margin-top: .25em; }
+.markdown li:has(> input[type=checkbox]) { list-style: none; }
+.markdown li > input[type=checkbox] { margin: 0 .4em 0 -1.4em; vertical-align: middle; }
+.markdown a { color: var(--accent); }
+.markdown img {
+  max-width: 100%;
+  max-height: none;
+  height: auto;
+  transition: none;
+}
+.markdown blockquote { padding: 0 1em; border-left: 3px solid #3a3a40; color: #aaa; }
+.markdown hr { height: 1px; border: 0; background: #2a2a2e; margin: 1.5em 0; }
+.markdown code {
+  padding: .15em .35em;
+  border-radius: 5px;
+  background: #222226;
+  font: .875em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.markdown pre {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #1a1a1e;
+  overflow-x: auto;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.markdown pre code { padding: 0; background: none; font: inherit; }
+.markdown table { display: block; overflow-x: auto; border-collapse: collapse; }
+.markdown th, .markdown td { padding: 6px 12px; border: 1px solid #2f2f35; }
+.markdown th { background: #1a1a1e; }
+
+/* Syntax highlighting: chroma's "github-dark" (render.Style), as classes */
+.chroma .err { color: #f85149 }
+.chroma .k { color: #ff7b72 }
+.chroma .kc { color: #79c0ff }
+.chroma .kd { color: #ff7b72 }
+.chroma .kn { color: #ff7b72 }
+.chroma .kp { color: #79c0ff }
+.chroma .kr { color: #ff7b72 }
+.chroma .kt { color: #ff7b72 }
+.chroma .nc { color: #f0883e; font-weight: bold }
+.chroma .no { color: #79c0ff; font-weight: bold }
+.chroma .nd { color: #d2a8ff; font-weight: bold }
+.chroma .ni { color: #ffa657 }
+.chroma .ne { color: #f0883e; font-weight: bold }
+.chroma .nl { color: #79c0ff; font-weight: bold }
+.chroma .nn { color: #ff7b72 }
+.chroma .py { color: #79c0ff }
+.chroma .nt { color: #7ee787 }
+.chroma .nv { color: #79c0ff }
+.chroma .vc { color: #79c0ff }
+.chroma .vg { color: #79c0ff }
+.chroma .vi { color: #79c0ff }
+.chroma .vm { color: #79c0ff }
+.chroma .nf { color: #d2a8ff; font-weight: bold }
+.chroma .fm { color: #d2a8ff; font-weight: bold }
+.chroma .l { color: #a5d6ff }
+.chroma .ld { color: #79c0ff }
+.chroma .s { color: #a5d6ff }
+.chroma .sa { color: #79c0ff }
+.chroma .sb { color: #a5d6ff }
+.chroma .sc { color: #a5d6ff }
+.chroma .dl { color: #79c0ff }
+.chroma .sd { color: #a5d6ff }
+.chroma .s2 { color: #a5d6ff }
+.chroma .se { color: #79c0ff }
+.chroma .sh { color: #79c0ff }
+.chroma .si { color: #a5d6ff }
+.chroma .sx { color: #a5d6ff }
+.chroma .sr { color: #79c0ff }
+.chroma .s1 { color: #a5d6ff }
+.chroma .ss { color: #a5d6ff }
+.chroma .m { color: #a5d6ff }
+.chroma .mb { color: #a5d6ff }
+.chroma .mf { color: #a5d6ff }
+.chroma .mh { color: #a5d6ff }
+.chroma .mi { color: #a5d6ff }
+.chroma .il { color: #a5d6ff }
+.chroma .mo { color: #a5d6ff }
+.chroma .o { color: #ff7b72; font-weight: bold }
+.chroma .ow { color: #ff7b72; font-weight: bold }
+.chroma .or { color: #ff7b72; font-weight: bold }
+.chroma .c { color: #8b949e; font-style: italic }
+.chroma .ch { color: #8b949e; font-style: italic }
+.chroma .cm { color: #8b949e; font-style: italic }
+.chroma .c1 { color: #8b949e; font-style: italic }
+.chroma .cs { color: #8b949e; font-weight: bold; font-style: italic }
+.chroma .cp { color: #8b949e; font-weight: bold; font-style: italic }
+.chroma .cpf { color: #8b949e; font-weight: bold; font-style: italic }
+.chroma .gd { color: #ffa198; background-color: #490202 }
+.chroma .ge { font-style: italic }
+.chroma .gr { color: #ffa198 }
+.chroma .gh { color: #79c0ff; font-weight: bold }
+.chroma .gi { color: #56d364; background-color: #0f5323 }
+.chroma .go { color: #8b949e }
+.chroma .gp { color: #8b949e }
+.chroma .gs { font-weight: bold }
+.chroma .gu { color: #79c0ff }
+.chroma .gt { color: #ff7b72 }
+.chroma .gl { text-decoration: underline }
+.chroma .w { color: #6e7681 }
 .viewer-msg { color: #aaa; text-align: center; padding: 24px; }
 .viewer-msg a { color: var(--accent); }
 

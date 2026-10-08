@@ -210,6 +210,9 @@ var textExt = map[string]bool{
 	".json": true, ".yaml": true, ".yml": true, ".toml": true, ".ini": true, ".conf": true,
 	".xml": true, ".go": true, ".py": true, ".js": true, ".ts": true, ".rs": true, ".c": true,
 	".h": true, ".cpp": true, ".java": true, ".sh": true, ".sql": true, ".css": true, ".html": true,
+	".jsx": true, ".tsx": true, ".mjs": true, ".rb": true, ".php": true, ".kt": true, ".swift": true,
+	".cs": true, ".hpp": true, ".lua": true, ".zig": true, ".scss": true, ".vue": true, ".svelte": true,
+	".diff": true, ".patch": true, ".proto": true, ".tf": true, ".nix": true, ".ipynb": true,
 }
 
 // Extensions Go's mime table may not know on minimal systems.
@@ -237,6 +240,9 @@ func mimeOf(name string) string {
 
 // MIMEOf exposes the MIME detection used for listings.
 func MIMEOf(name string) string { return mimeOf(name) }
+
+// KindOf returns the kind a listing reports for a file named name.
+func KindOf(name string) Kind { return kindOf(name, mimeOf(name)) }
 
 func kindOf(name, m string) Kind {
 	ext := strings.ToLower(path.Ext(name))

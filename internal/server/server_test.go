@@ -37,6 +37,9 @@ func newServer(t *testing.T, tok string) (*httptest.Server, string) {
 	os.WriteFile(filepath.Join(base, "secret.txt"), []byte("secret"), 0o644)
 	os.WriteFile(filepath.Join(root, "pics", "a.jpg"), []byte("0123456789"), 0o644)
 	os.WriteFile(filepath.Join(root, "evil.html"), []byte("<script>alert(1)</script>"), 0o644)
+	os.MkdirAll(filepath.Join(root, "docs"), 0o755)
+	os.WriteFile(filepath.Join(root, "docs", "notes.md"), []byte("# Notes\n\n[pic](../pics/a.jpg) [up](../evil.html) [folder](../pics) "+
+		"[zip](../x.zip) [secret](../.env) [out](../../secret.txt) [sp](my%20notes.md)\n\n![p](../pics/a.jpg)\n\n<script>alert(1)</script>\n"), 0o644)
 
 	r, err := fsview.Open(root, false)
 	if err != nil {
@@ -344,5 +347,64 @@ func TestEventsDisabled(t *testing.T) {
 	// 204 makes EventSource give up instead of reconnecting forever.
 	if res.StatusCode != http.StatusNoContent {
 		t.Fatalf("events without a watcher: %d; want 204", res.StatusCode)
+	}
+}
+
+func TestRender(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+	res, err := c.Get(ts.URL + "/api/render?path=docs/notes.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusOK || !strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") {
+		t.Fatalf("status %d, type %q", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	var body struct {
+		HTML      string `json:"html"`
+		Truncated bool   `json:"truncated"`
+	}
+	json.NewDecoder(res.Body).Decode(&body)
+	for _, want := range []string{
+		`<h1 id="md-notes">`,
+		`href="#/pics?view=a.jpg"`,         // viewable: opens in the viewer
+		`href="#/?view=evil.html"`,         // text, in the root folder
+		`href="#/pics"`,                    // a folder: its listing
+		`href="/raw/x.zip"`,                // not viewable: the file itself
+		`href="#/"`,                        // hidden: nothing revealed
+		`href="#/"`,                        // above the root: the root
+		`href="#/docs?view=my%20notes.md"`, // escaped once, decodable by the UI
+		`src="/raw/pics/a.jpg"`,
+	} {
+		if !strings.Contains(body.HTML, want) {
+			t.Errorf("missing %q in:\n%s", want, body.HTML)
+		}
+	}
+	if strings.Contains(body.HTML, "<script") || body.Truncated {
+		t.Errorf("truncated=%v, html:\n%s", body.Truncated, body.HTML)
+	}
+
+	for path, code := range map[string]int{"": 400, "docs": 404, "missing.md": 404, "../secret.txt": 400} {
+		res, _ := c.Get(ts.URL + "/api/render?path=" + path)
+		if res.StatusCode != code {
+			t.Errorf("%q: %d; want %d", path, res.StatusCode, code)
+		}
+	}
+}
+
+func TestRenderTruncated(t *testing.T) {
+	defer func(n int64) { renderLimit = n }(renderLimit)
+	renderLimit = 5
+	ts, base := newServer(t, token)
+	// The limit cuts "€" (3 bytes) after its first 2.
+	os.WriteFile(filepath.Join(base, "root", "long.txt"), []byte("abc€def"), 0o644)
+	res, _ := authed(t, ts).Get(ts.URL + "/api/render?path=long.txt")
+	var body struct {
+		HTML      string `json:"html"`
+		Truncated bool   `json:"truncated"`
+	}
+	json.NewDecoder(res.Body).Decode(&body)
+	if !body.Truncated || body.HTML != `<pre class="plain">abc</pre>` {
+		t.Fatalf("got %+v; want truncated \"abc\"", body)
 	}
 }

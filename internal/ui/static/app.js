@@ -16,8 +16,6 @@ const SORTS = {
   name: { label: "A–Z", cmp: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) },
 };
 
-const TEXT_LIMIT = 1024 * 1024; // show at most 1 MB of text inline
-
 const state = {
   path: ".",
   entries: [],
@@ -379,17 +377,35 @@ async function showItem() {
   } else if (item.kind === "audio") {
     stage.append(el("audio", { src, controls: "", autoplay: "" }));
   } else if (item.kind === "text") {
-    const pre = el("pre", { text: "Loading…" });
-    stage.append(pre);
+    // The server renders Markdown and highlights code. Its HTML carries no
+    // script or inline style (raw HTML in Markdown is dropped), and the page's
+    // CSP would block either anyway.
+    const doc = el("div", { class: "doc" });
+    const note = el("p", { class: "doc-note", text: "Loading…" });
+    doc.append(note);
+    stage.append(doc);
     try {
-      const res = await fetch(src, { headers: { Range: "bytes=0-" + (TEXT_LIMIT - 1) } });
-      const text = await res.text();
+      const res = await fetch("/api/render?path=" + encodeURIComponent(join(state.path, item.name)), { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
       if (state.viewable[state.index] !== item) return; // user moved on
-      pre.textContent = item.size > TEXT_LIMIT ? text + "\n\n… (truncated, download for the full file)" : text;
+      doc.innerHTML = data.html;
+      if (data.truncated) doc.append(el("p", { class: "doc-note", text: "… truncated, download for the full file" }));
     } catch {
-      pre.textContent = "Couldn’t load this file.";
+      if (state.viewable[state.index] === item) note.textContent = "Couldn’t load this file.";
     }
   }
+}
+
+// "#heading" links in Markdown would replace the route, so scroll instead.
+// Heading ids carry a prefix (render.IDPrefix) to stay clear of the page's own.
+function followAnchor(e) {
+  const a = e.target.closest(".markdown a[href^='#']");
+  if (!a || a.getAttribute("href").startsWith("#/")) return;
+  e.preventDefault();
+  const id = safeDecode(a.getAttribute("href").slice(1));
+  const target = document.getElementById("md-" + id);
+  if (target) target.scrollIntoView({ behavior: "smooth" });
 }
 
 function updateViewerNav() {
@@ -414,7 +430,7 @@ function setupGestures() {
     if (e.touches.length !== 1 || zoomed()) { tracking = false; return; }
     const t = e.touches[0];
     x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
-    tracking = !e.target.closest("video, audio, pre, .viewer-top");
+    tracking = !e.target.closest("video, audio, .doc, .viewer-top");
   }, { passive: true });
 
   v.addEventListener("touchmove", (e) => {
@@ -490,6 +506,7 @@ function init() {
   $("v-next").addEventListener("click", () => go(1));
   $("v-stage").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeViewer(false); // tap on the backdrop
+    else followAnchor(e);
   });
 
   document.addEventListener("keydown", (e) => {
