@@ -128,7 +128,7 @@ file.
 `PATH` (or given with `--ffmpeg`), a video's thumbnail is a frame from one second in (the first
 is often black), or the first frame of a shorter clip, scaled by ffmpeg and stored in the same
 cache as image thumbnails. ffmpeg never gets a path: it reads the file kropka opened through
-`os.Root` as its stdin, named as a seekable file (`file:/dev/stdin`; `fd:0` on Windows, which
+`os.Root` as its stdin, named as a seekable file (`file:/dev/stdin`; `fd:` on Windows, which
 needs ffmpeg 6.0+), so it can't be pointed outside the served folder and still seeks, as MP4s
 without "faststart" require. Each grab runs in the thumbnail worker pool with a 30 s timeout and
 a cap on its output. `/api/ls` reports `videoThumbs`, and only then does the grid ask `/thumb/`
