@@ -248,7 +248,7 @@ main {
   color: #fff;
   display: flex;
   flex-direction: column;
-  touch-action: pan-y pinch-zoom;
+  touch-action: none; /* pinch and pan are the viewer's own (app.js, zoom) */
 }
 .viewer-top {
   display: flex;
@@ -279,6 +279,9 @@ main {
   -webkit-user-drag: none;
   transition: transform .18s ease-out, opacity .18s;
 }
+.viewer-stage > img { cursor: zoom-in; }
+.viewer-stage > img.zoomed { cursor: grab; }
+.viewer-stage > img.panning { cursor: grabbing; }
 .viewer-stage audio { width: min(90vw, 480px); }
 /* Text files: code (highlighted or plain) and rendered Markdown */
 .doc {
@@ -287,6 +290,7 @@ main {
   padding: calc(64px + env(safe-area-inset-top)) 16px 32px;
   overflow: auto;
   overscroll-behavior: contain;
+  touch-action: pan-x pan-y pinch-zoom;
   background: #111;
   color: #ddd;
   tab-size: 4;

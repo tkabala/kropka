@@ -369,8 +369,11 @@ async function showItem() {
   updateViewerNav();
 
   const src = rawURL(state.path, item.name);
+  resetZoom(null);
   if (item.kind === "image") {
-    stage.append(el("img", { src, alt: item.name }));
+    const img = el("img", { src, alt: item.name, draggable: "false" });
+    stage.append(img);
+    resetZoom(img);
     preloadNeighbors();
   } else if (item.kind === "video") {
     stage.append(el("video", { src, controls: "", autoplay: "", playsinline: "" }));
@@ -421,13 +424,160 @@ function preloadNeighbors() {
   }
 }
 
-// Swipe: horizontal to step, down to close. Ignored while pinch-zoomed.
+// ---------- zoom ----------
+
+// The image in the viewer zooms with a pinch, a double tap or double click,
+// the mouse wheel and + - 0, and pans with a drag. It is a transform on the
+// image, so the layout never changes: s is the scale, (x, y) the offset of
+// the image's centre from the stage's centre, where the layout puts it.
+const zoom = { img: null, s: 1, x: 0, y: 0, pts: new Map() }; // pts: pointerId → last client position
+const ZOOM_STEP = 2.5; // double tap
+
+function resetZoom(img) {
+  zoom.img = img;
+  zoom.s = 1;
+  zoom.x = 0;
+  zoom.y = 0;
+  zoom.pts.clear();
+}
+
+function zoomReady() {
+  return zoom.img !== null && zoom.img.isConnected && zoom.img.offsetWidth > 0;
+}
+
+// At least 4x, and far enough to see the original's pixels doubled.
+function maxZoom() {
+  return Math.max(4, (2 * zoom.img.naturalWidth) / zoom.img.offsetWidth);
+}
+
+// Scales by k around the client point (fx, fy), which stays put on screen.
+function zoomAt(k, fx, fy) {
+  const s = Math.min(Math.max(zoom.s * k, 1), maxZoom());
+  const r = $("v-stage").getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  zoom.x = fx - cx - (s / zoom.s) * (fx - cx - zoom.x);
+  zoom.y = fy - cy - (s / zoom.s) * (fy - cy - zoom.y);
+  zoom.s = s;
+}
+
+// Keeps the image covering the stage (or centred, along an axis where it is
+// smaller) and draws it.
+function applyZoom(animate) {
+  const img = zoom.img;
+  const r = $("v-stage").getBoundingClientRect();
+  if (zoom.s < 1.001) {
+    zoom.s = 1;
+    zoom.x = 0;
+    zoom.y = 0;
+  } else {
+    const mx = Math.max(0, (img.offsetWidth * zoom.s - r.width) / 2);
+    const my = Math.max(0, (img.offsetHeight * zoom.s - r.height) / 2);
+    zoom.x = Math.min(Math.max(zoom.x, -mx), mx);
+    zoom.y = Math.min(Math.max(zoom.y, -my), my);
+  }
+  img.style.transition = animate ? "" : "none";
+  img.style.opacity = "";
+  img.style.transform = zoom.s === 1 ? "" : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+  img.classList.toggle("zoomed", zoom.s > 1);
+}
+
+function toggleZoom(fx, fy) {
+  if (zoom.s > 1) zoom.s = 1;
+  else zoomAt(ZOOM_STEP, fx, fy);
+  applyZoom(true);
+}
+
+function zoomCentre(k) {
+  if (!zoomReady()) return;
+  const r = $("v-stage").getBoundingClientRect();
+  zoomAt(k, r.left + r.width / 2, r.top + r.height / 2);
+  applyZoom(true);
+}
+
+// Pointer events cover touch and mouse alike. Two pointers pinch, one pans
+// while zoomed in; at 1x a single finger is left to the swipe gestures below.
+function setupZoom() {
+  const stage = $("v-stage");
+  const pts = zoom.pts;
+  let down = null; // where a possible tap started
+  let lastTap = null;
+
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.target !== zoom.img || !zoomReady()) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault(); // no native image drag or text selection
+    zoom.img.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    down = pts.size === 1 ? { x: e.clientX, y: e.clientY, t: Date.now() } : null; // a pinch is no tap
+  });
+
+  stage.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p || !zoomReady()) return;
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) down = null;
+    if (pts.size >= 2) {
+      const [a, b] = [...pts.values()];
+      const d0 = Math.hypot(a.x - b.x, a.y - b.y);
+      const m0 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      p.x = e.clientX; p.y = e.clientY;
+      const d1 = Math.hypot(a.x - b.x, a.y - b.y);
+      const m1 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (d0 > 0) zoomAt(d1 / d0, m0.x, m0.y);
+      zoom.x += m1.x - m0.x;
+      zoom.y += m1.y - m0.y;
+      applyZoom(false);
+    } else {
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      if (zoom.s === 1) return;
+      zoom.x += dx;
+      zoom.y += dy;
+      zoom.img.classList.add("panning");
+      applyZoom(false);
+    }
+  });
+
+  const up = (e) => {
+    if (!pts.delete(e.pointerId)) return;
+    if (pts.size > 0) return;
+    if (zoom.img) zoom.img.classList.remove("panning");
+    if (e.type !== "pointerup" || !down || Date.now() - down.t > 300) { down = null; return; }
+    const tap = { x: e.clientX, y: e.clientY, t: Date.now() };
+    down = null;
+    if (lastTap && tap.t - lastTap.t < 350 && Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < 40) {
+      lastTap = null;
+      if (zoomReady()) toggleZoom(tap.x, tap.y);
+    } else {
+      lastTap = tap;
+    }
+  };
+  stage.addEventListener("pointerup", up);
+  stage.addEventListener("pointercancel", up);
+
+  // A trackpad pinch arrives as a wheel event with ctrlKey and small deltas.
+  stage.addEventListener("wheel", (e) => {
+    if (!zoomReady()) return;
+    e.preventDefault();
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.002)), e.clientX, e.clientY);
+    applyZoom(false);
+  }, { passive: false });
+
+  window.addEventListener("resize", () => {
+    if (zoomReady()) applyZoom(false);
+  });
+}
+
+// ---------- swipe ----------
+
+// Swipe: horizontal to step, down to close. Ignored while zoomed in, by the
+// viewer or (on a text file) by the browser.
 function setupGestures() {
   const v = $("viewer");
   let x0 = 0, y0 = 0, t0 = 0, tracking = false;
 
   v.addEventListener("touchstart", (e) => {
-    if (e.touches.length !== 1 || zoomed()) { tracking = false; return; }
+    if (e.touches.length !== 1 || zoom.s > 1 || pageZoomed()) { tracking = false; return; }
     const t = e.touches[0];
     x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
     tracking = !e.target.closest("video, audio, .doc, .viewer-top");
@@ -452,6 +602,7 @@ function setupGestures() {
   v.addEventListener("touchend", (e) => {
     if (!tracking) return;
     tracking = false;
+    if (zoom.s > 1) return; // this touch was a double tap, now zoomed in
     const t = e.changedTouches[0];
     const dx = t.clientX - x0, dy = t.clientY - y0;
     const fast = Date.now() - t0 < 300;
@@ -469,7 +620,7 @@ function setupGestures() {
   });
 }
 
-function zoomed() {
+function pageZoomed() {
   return window.visualViewport && window.visualViewport.scale > 1.01;
 }
 
@@ -514,6 +665,10 @@ function init() {
     if (e.key === "Escape") closeViewer(false);
     else if (e.key === "ArrowRight") go(1);
     else if (e.key === "ArrowLeft") go(-1);
+    else if (e.ctrlKey || e.metaKey || e.altKey) return; // browser zoom and shortcuts
+    else if (e.key === "+" || e.key === "=") zoomCentre(1.5);
+    else if (e.key === "-") zoomCentre(1 / 1.5);
+    else if (e.key === "0") zoomCentre(0);
   });
 
   // Live updates pause while the tab is hidden; catch up when it comes back.
@@ -526,6 +681,7 @@ function init() {
     }
   });
 
+  setupZoom();
   setupGestures();
   window.addEventListener("hashchange", route);
   route();

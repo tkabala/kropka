@@ -21,7 +21,8 @@ $ kropka
 ## Features
 
 - **One binary, zero config.** The UI is embedded; no runtime, no config files.
-- **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close.
+- **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close,
+  pinch or double-tap to zoom.
 - **Fast grids.** Large photos get small thumbnails, generated on first view and cached on
   disk, so a folder of 20 MB renders loads like a folder of 40 KB ones.
 - **Live.** New and changed files show up on their own while you watch, so you can leave
@@ -118,7 +119,7 @@ pieces fit together.
 - [x] Thumbnails with an on-disk cache (fast grids for large photos)
 - [x] Live reload: new files appear without refreshing (fsnotify + SSE)
 - [x] Markdown rendering and syntax highlighting
-- [ ] Pinch-zoom and pan in the viewer
+- [x] Pinch-zoom and pan in the viewer
 - [ ] Download a folder as `.zip`
 - [ ] Video thumbnails when `ffmpeg` is available
 
