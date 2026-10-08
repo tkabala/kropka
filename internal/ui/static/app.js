@@ -237,6 +237,40 @@ function showStatus(msg) {
   for (const id of ["folders", "grid", "files"]) $(id).hidden = true;
 }
 
+// ---------- zip ----------
+
+// Asks the server first (?check=1), so that a folder over the size limit, or
+// one deleted meanwhile, shows a message instead of replacing the page.
+async function downloadZip() {
+  const url = "/zip/" + (state.path === "." ? "" : encPath(state.path));
+  let res;
+  try {
+    res = await fetch(url + "?check=1", { cache: "no-store" });
+  } catch {
+    toast("Can’t reach kropka. Is it still running?");
+    return;
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    toast(res.status === 401 ? "Session expired. Open the link printed in the terminal again."
+      : body.error || "Couldn’t download this folder.");
+    return;
+  }
+  const a = el("a", { href: url, download: "" });
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+
 function renderCrumbs() {
   const nav = $("crumbs");
   nav.replaceChildren();
@@ -642,6 +676,7 @@ function init() {
     renderList();
   });
   $("refresh").addEventListener("click", refresh);
+  $("zip").addEventListener("click", downloadZip);
 
   const openFrom = (e) => {
     const b = e.target.closest("[data-name]");

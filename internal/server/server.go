@@ -2,8 +2,10 @@
 package server
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -12,7 +14,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -48,6 +52,7 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /api/render", s.handleRender)
 	mux.HandleFunc("GET /raw/{path...}", s.handleRaw)
 	mux.HandleFunc("GET /thumb/{path...}", s.handleThumb)
+	mux.HandleFunc("GET /zip/{path...}", s.handleZip)
 	mux.Handle("GET /", uiHandler(cfg.UI))
 
 	var h http.Handler = mux
@@ -277,6 +282,169 @@ func (s *srv) handleRaw(w http.ResponseWriter, r *http.Request) {
 		h.Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.PathEscape(info.Name()))
 	}
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+}
+
+// zipMaxBytes and zipMaxFiles cap a folder download, so that zipping a huge
+// tree by accident fails fast instead of streaming for an hour.
+var (
+	zipMaxBytes int64 = 4 << 30
+	zipMaxFiles       = 50_000
+)
+
+var errZipTooLarge = errors.New("too large")
+
+// handleZip streams a folder as a .zip, built as it is sent. The folder is
+// walked first, so one over the limits is refused before anything is sent;
+// with ?check=1 that walk is all it does, and the UI uses it to show the
+// error in the page rather than navigating to it.
+func (s *srv) handleZip(w http.ResponseWriter, r *http.Request) {
+	rel, err := s.cfg.Root.Clean(r.PathValue("path"))
+	if err != nil {
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	type item struct {
+		rel  string
+		info fs.FileInfo
+	}
+	var items []item
+	var files int
+	var size int64
+	err = s.cfg.Root.Walk(rel, func(p string, info fs.FileInfo) error {
+		if err := r.Context().Err(); err != nil {
+			return err
+		}
+		items = append(items, item{p, info})
+		if !info.IsDir() {
+			files++
+			size += info.Size()
+		}
+		if files > zipMaxFiles || size > zipMaxBytes {
+			return errZipTooLarge
+		}
+		return nil
+	})
+	switch {
+	case errors.Is(err, errZipTooLarge):
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": fmt.Sprintf(
+			"This folder is too large to download as a zip (the limit is %s or %s files).", fmtBytes(zipMaxBytes), fmtCount(zipMaxFiles))})
+		return
+	case r.Context().Err() != nil:
+		return
+	case err != nil:
+		writeErr(w, statusFor(err), err)
+		return
+	}
+	if r.URL.Query().Get("check") == "1" {
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]any{"files": files, "size": size})
+		return
+	}
+
+	// Entries sit in a folder named like the one downloaded, as a zip of a
+	// folder made by a file manager would.
+	name := path.Base(rel)
+	if rel == "." {
+		name = filepath.Base(s.cfg.Root.Dir())
+		if name == "." || strings.ContainsAny(name, `/\:`) {
+			name = "kropka" // serving a drive or filesystem root
+		}
+	}
+	h := w.Header()
+	h.Set("Content-Type", "application/zip")
+	h.Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.PathEscape(name+".zip"))
+	h.Set("Cache-Control", "no-store")
+	if r.Method == http.MethodHead {
+		return
+	}
+
+	zw := zip.NewWriter(w)
+	if top, err := s.cfg.Root.StatDir(rel); err == nil {
+		items = append([]item{{rel, top}}, items...)
+	}
+	for _, it := range items {
+		hdr, err := zip.FileInfoHeader(it.info)
+		if err != nil {
+			s.zipFailed(rel, err)
+		}
+		hdr.Name = name
+		if it.rel != rel {
+			hdr.Name += "/" + strings.TrimPrefix(it.rel, rel+"/")
+		}
+		if it.info.IsDir() {
+			hdr.Name += "/"
+			hdr.Method = zip.Store
+			if _, err := zw.CreateHeader(hdr); err != nil {
+				s.zipFailed(rel, err)
+			}
+			continue
+		}
+		hdr.Method = zipMethod(it.rel)
+		f, _, err := s.cfg.Root.OpenFile(it.rel)
+		if err != nil {
+			continue // removed since the walk
+		}
+		dst, err := zw.CreateHeader(hdr)
+		if err == nil {
+			_, err = io.Copy(dst, f)
+		}
+		f.Close()
+		if err != nil {
+			s.zipFailed(rel, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		s.zipFailed(rel, err)
+	}
+}
+
+// zipFailed ends a zip that is already being sent. Aborting the connection
+// is the only way left to tell the browser, which then reports the download
+// as failed instead of saving a truncated file.
+func (s *srv) zipFailed(rel string, err error) {
+	if s.cfg.Logger != nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
+		s.cfg.Logger.Printf("zip of %s: %v", rel, err)
+	}
+	panic(http.ErrAbortHandler)
+}
+
+// Media and archives are compressed already; deflating them again costs time
+// and saves next to nothing.
+func zipMethod(name string) uint16 {
+	switch fsview.KindOf(name) {
+	case fsview.KindImage, fsview.KindVideo, fsview.KindAudio, fsview.KindPDF:
+		if fsview.MIMEOf(name) != "image/svg+xml" && fsview.MIMEOf(name) != "image/bmp" {
+			return zip.Store
+		}
+	}
+	switch strings.ToLower(path.Ext(name)) {
+	case ".zip", ".gz", ".tgz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".jar", ".docx", ".xlsx", ".pptx":
+		return zip.Store
+	}
+	return zip.Deflate
+}
+
+// fmtBytes and fmtCount write numbers for messages: "4\u00a0GB", "50,000".
+// The no-break space keeps a size on one line.
+func fmtBytes(n int64) string {
+	const unit = 1 << 10
+	if n < unit {
+		return fmt.Sprintf("%d\u00a0B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.4g\u00a0%cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+func fmtCount(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 // handleThumb serves a grid-sized thumbnail, or redirects to the original when

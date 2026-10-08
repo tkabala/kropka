@@ -14,6 +14,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
                                                     ├── GET /api/render?path= text file as HTML (Markdown, code)
                                                     ├── GET /raw/{path...}   file bytes (Range, ETag, sandbox CSP)
                                                     ├── GET /thumb/{path...} grid thumbnail, or 307 to /raw/
+                                                    ├── GET /zip/{path...}   folder as a .zip, streamed
                                                     └── GET /                embedded UI
                                                     │
                                                     ▼
@@ -112,6 +113,16 @@ first, which ends every stream, so `Shutdown` doesn't wait for connections that 
 Network filesystems (NFS, SMB, FUSE mounts) often don't deliver change events; there the page
 still refreshes when it regains focus. Windows doesn't report a watched folder itself being
 renamed or moved away, so a page showing it isn't told until it refreshes.
+
+**Zip downloads: walked first, then streamed.** `/zip/{path}` walks the folder with the same
+rules as a listing (no hidden files, no symlinks leaving the root, no FIFOs or devices) and also
+skips symlinks to folders, which could loop. The walk is what enforces the limits (4 GB, 50,000
+files): a folder over them gets a `413` before a single byte of zip, and `?check=1` stops after
+the walk, which the UI asks first so the error lands in a toast rather than a blank page. The zip
+is then written straight to the response, with no temporary file and no `Content-Length`.
+Media and archives are stored, everything else deflated. If a read fails halfway, the handler
+aborts the connection, so the browser reports a failed download rather than saving a truncated
+file.
 
 ## Planned components
 

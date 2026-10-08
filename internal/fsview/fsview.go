@@ -153,6 +153,56 @@ func (r *Root) List(rel string) ([]Entry, error) {
 	return out, nil
 }
 
+// Walk calls fn for every folder and regular file below the folder rel,
+// parents before children, in name order. It leaves out what List leaves out
+// (hidden names, broken or escaping symlinks, FIFOs and devices), and also
+// symlinks to folders, which could loop; symlinks to files inside the root
+// are reported with the target's info. A subfolder that can't be read is
+// skipped. Walk stops at the first error fn returns and returns it.
+func (r *Root) Walk(rel string, fn func(rel string, info fs.FileInfo) error) error {
+	if _, err := r.StatDir(rel); err != nil {
+		return err
+	}
+	return r.walk(rel, fn)
+}
+
+func (r *Root) walk(dir string, fn func(string, fs.FileInfo) error) error {
+	f, err := r.root.Open(dir)
+	if err != nil {
+		return nil
+	}
+	dirents, err := f.ReadDir(-1)
+	f.Close()
+	if err != nil {
+		return nil
+	}
+	sort.Slice(dirents, func(i, j int) bool { return dirents[i].Name() < dirents[j].Name() })
+	for _, d := range dirents {
+		if r.Hidden(d.Name()) {
+			continue
+		}
+		p := path.Join(dir, d.Name())
+		info, err := r.root.Stat(p)
+		if err != nil {
+			continue
+		}
+		switch {
+		case info.IsDir() && d.Type()&fs.ModeSymlink == 0:
+			if err := fn(p, info); err != nil {
+				return err
+			}
+			if err := r.walk(p, fn); err != nil {
+				return err
+			}
+		case info.Mode().IsRegular():
+			if err := fn(p, info); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Hidden reports whether a file named name is left out of listings.
 func (r *Root) Hidden(name string) bool {
 	return !r.showHidden && strings.HasPrefix(name, ".")

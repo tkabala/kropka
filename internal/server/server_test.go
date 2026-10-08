@@ -1,6 +1,7 @@
 package server
 
 import (
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -406,5 +408,175 @@ func TestRenderTruncated(t *testing.T) {
 	json.NewDecoder(res.Body).Decode(&body)
 	if !body.Truncated || body.HTML != `<pre class="plain">abc</pre>` {
 		t.Fatalf("got %+v; want truncated \"abc\"", body)
+	}
+}
+
+// readZip downloads a zip and returns its entries' contents by name ("" for folders).
+func readZip(t *testing.T, c *http.Client, url string) (map[string]string, *zip.Reader, *http.Response) {
+	t.Helper()
+	res, err := c.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	data, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: %d %s", url, res.StatusCode, data)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("not a zip: %v", err)
+	}
+	got := map[string]string{}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		got[f.Name] = string(b)
+	}
+	return got, zr, res
+}
+
+func TestZip(t *testing.T) {
+	ts, base := newServer(t, token)
+	root := filepath.Join(base, "root")
+	os.MkdirAll(filepath.Join(root, "pics", "2026", "empty"), 0o755)
+	os.MkdirAll(filepath.Join(root, "pics", ".git"), 0o755)
+	os.WriteFile(filepath.Join(root, "pics", ".git", "config"), []byte("hidden"), 0o644)
+	os.WriteFile(filepath.Join(root, "pics", "2026", "zażółć 🎉.md"), []byte(strings.Repeat("text ", 1000)), 0o644)
+	old := time.Date(2020, 1, 2, 3, 4, 6, 0, time.UTC)
+	os.Chtimes(filepath.Join(root, "pics", "a.jpg"), old, old)
+	c := authed(t, ts)
+
+	got, zr, res := readZip(t, c, ts.URL+"/zip/pics")
+	if ct := res.Header.Get("Content-Type"); ct != "application/zip" {
+		t.Errorf("Content-Type %q", ct)
+	}
+	if cd := res.Header.Get("Content-Disposition"); cd != `attachment; filename*=UTF-8''pics.zip` {
+		t.Errorf("Content-Disposition %q", cd)
+	}
+	want := map[string]string{
+		"pics/":                 "",
+		"pics/2026/":            "",
+		"pics/2026/empty/":      "",
+		"pics/2026/zażółć 🎉.md": strings.Repeat("text ", 1000),
+		"pics/a.jpg":            "0123456789",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("entries %q; want %q", keys(got), keys(want))
+	}
+	for name, body := range want {
+		if b, ok := got[name]; !ok || b != body {
+			t.Errorf("%s: %q (present %v)", name, b, ok)
+		}
+	}
+	for _, f := range zr.File {
+		switch f.Name {
+		case "pics/a.jpg":
+			if f.Method != zip.Store {
+				t.Errorf("a.jpg deflated; JPEGs should be stored")
+			}
+			if !f.Modified.Equal(old) {
+				t.Errorf("a.jpg modified %v; want %v", f.Modified, old)
+			}
+		case "pics/2026/zażółć 🎉.md":
+			if f.Method != zip.Deflate || f.CompressedSize64 >= f.UncompressedSize64 {
+				t.Errorf("text not deflated: method %d, %d → %d", f.Method, f.UncompressedSize64, f.CompressedSize64)
+			}
+			if f.NonUTF8 {
+				t.Errorf("name not flagged UTF-8")
+			}
+		}
+	}
+
+	// The root: named after the served folder; nothing outside it or hidden.
+	got, _, res = readZip(t, c, ts.URL+"/zip/")
+	if cd := res.Header.Get("Content-Disposition"); cd != `attachment; filename*=UTF-8''root.zip` {
+		t.Errorf("root Content-Disposition %q", cd)
+	}
+	if _, ok := got["root/docs/notes.md"]; !ok {
+		t.Errorf("root zip lacks docs/notes.md: %q", keys(got))
+	}
+	for name := range got {
+		if strings.Contains(name, ".git") || strings.Contains(name, "secret") {
+			t.Errorf("root zip has %s", name)
+		}
+	}
+}
+
+func TestZipErrors(t *testing.T) {
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+	for path, code := range map[string]int{
+		"/zip/nope":       http.StatusNotFound,
+		"/zip/.git":       http.StatusNotFound,
+		"/zip/pics/a.jpg": http.StatusBadRequest,
+		"/zip/..%2f":      http.StatusBadRequest,
+	} {
+		res, err := c.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != code {
+			t.Errorf("%s: %d; want %d", path, res.StatusCode, code)
+		}
+	}
+	res, _ := client(t).Get(ts.URL + "/zip/pics")
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("no session: %d; want 401", res.StatusCode)
+	}
+}
+
+func TestZipLimits(t *testing.T) {
+	defer func(b int64, n int) { zipMaxBytes, zipMaxFiles = b, n }(zipMaxBytes, zipMaxFiles)
+	ts, _ := newServer(t, token)
+	c := authed(t, ts)
+
+	res, _ := c.Get(ts.URL + "/zip/?check=1")
+	var ok struct{ Files, Size int64 }
+	json.NewDecoder(res.Body).Decode(&ok)
+	if res.StatusCode != http.StatusOK || ok.Files != 3 {
+		t.Fatalf("check: %d %+v; want 200 and 3 files", res.StatusCode, ok)
+	}
+
+	for _, set := range []func(){
+		func() { zipMaxFiles = 2 },
+		func() { zipMaxFiles, zipMaxBytes = 100, 20 },
+	} {
+		set()
+		for _, q := range []string{"?check=1", ""} {
+			res, _ := c.Get(ts.URL + "/zip/" + q)
+			var body struct{ Error string }
+			json.NewDecoder(res.Body).Decode(&body)
+			if res.StatusCode != http.StatusRequestEntityTooLarge || !strings.Contains(body.Error, "too large") {
+				t.Errorf("limits %d B/%d files, %q: %d %q; want 413", zipMaxBytes, zipMaxFiles, q, res.StatusCode, body.Error)
+			}
+		}
+	}
+}
+
+func keys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestZipMessageNumbers(t *testing.T) {
+	for n, want := range map[int64]string{512: "512 B", 4 << 30: "4 GB", 1536 << 20: "1.5 GB"} {
+		if got := fmtBytes(n); got != want {
+			t.Errorf("fmtBytes(%d) = %q; want %q", n, got, want)
+		}
+	}
+	for n, want := range map[int]string{7: "7", 999: "999", 1000: "1,000", 50_000: "50,000", 1234567: "1,234,567"} {
+		if got := fmtCount(n); got != want {
+			t.Errorf("fmtCount(%d) = %q; want %q", n, got, want)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -141,5 +142,36 @@ func TestOpenFileRejectsFIFOWithoutBlocking(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("OpenFile blocked on a FIFO")
+	}
+}
+
+func TestWalk(t *testing.T) {
+	r := setup(t, false)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.Symlink("../a.jpg", filepath.Join(r.Dir(), "sub", "pic.jpg")))
+	must(os.Symlink("../outside/secret.txt", filepath.Join(r.Dir(), "sub", "leak.txt")))
+	must(os.MkdirAll(filepath.Join(r.Dir(), "sub", "empty"), 0o755))
+	if err := mkfifo(filepath.Join(r.Dir(), "sub", "pipe")); err != nil {
+		t.Logf("no FIFO in this walk: %v", err)
+	}
+
+	var got []string
+	must(r.Walk(".", func(rel string, info os.FileInfo) error {
+		if info.IsDir() {
+			rel += "/"
+		}
+		got = append(got, rel)
+		return nil
+	}))
+	// No hidden folder, no escaping link, no link to a folder ("inside"), no FIFO.
+	// sub/pic.jpg points at a.jpg, which is a file inside the root.
+	want := []string{"a.jpg", "sub/", "sub/b.mp4", "sub/empty/", "sub/pic.jpg"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("walked %q; want %q", got, want)
 	}
 }

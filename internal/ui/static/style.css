@@ -447,3 +447,20 @@ main {
 @media (hover: none) { .nav { display: none; } }
 
 body.locked { overflow: hidden; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #2a2a2e;
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / .35);
+}

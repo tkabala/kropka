@@ -33,6 +33,8 @@ $ kropka
 - **Readable text.** Markdown is rendered (tables, task lists, images, links between
   files), code is syntax highlighted, logs open inline; PDFs open in the browser's viewer;
   everything else downloads.
+- **Whole folders.** Download the folder you're in as a `.zip`, streamed as it is built
+  (up to 4 GB or 50,000 files).
 
 ## Install
 
@@ -120,7 +122,7 @@ pieces fit together.
 - [x] Live reload: new files appear without refreshing (fsnotify + SSE)
 - [x] Markdown rendering and syntax highlighting
 - [x] Pinch-zoom and pan in the viewer
-- [ ] Download a folder as `.zip`
+- [x] Download a folder as `.zip`
 - [ ] Video thumbnails when `ffmpeg` is available
 
 ## License
