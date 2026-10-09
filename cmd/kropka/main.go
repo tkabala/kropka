@@ -280,7 +280,9 @@ func lanIPs() []string {
 		return nil
 	}
 	for _, ifc := range ifaces {
-		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+		// FlagUp alone is only the admin state: a bridge with nothing attached
+		// (docker0) is UP but has no carrier. FlagRunning is the operational state.
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagRunning == 0 || ifc.Flags&net.FlagLoopback != 0 {
 			continue
 		}
 		addrs, _ := ifc.Addrs()
