@@ -174,7 +174,7 @@ func (s *srv) handleRender(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	src, err := io.ReadAll(io.LimitReader(f, renderLimit))
 	if err != nil {
 		writeErr(w, statusFor(err), err)
@@ -268,7 +268,7 @@ func (s *srv) handleRaw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(statusFor(err)), statusFor(err))
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := w.Header()
 	ctype := fsview.MIMEOf(info.Name())
@@ -391,7 +391,7 @@ func (s *srv) handleZip(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			_, err = io.Copy(dst, f)
 		}
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			s.zipFailed(rel, err)
 		}
@@ -489,7 +489,7 @@ func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 		s.thumbFailed(w, r, rel, err) // pruned or removed since Get
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		s.thumbFailed(w, r, rel, err)

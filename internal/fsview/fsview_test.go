@@ -40,7 +40,11 @@ func setup(t *testing.T, showHidden bool) *Root {
 
 	r, err := Open(filepath.Join(base, "root"), showHidden)
 	must(err)
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return r
 }
 
@@ -119,7 +123,9 @@ func TestOpenFileCannotEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("symlink inside root: %v", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := r.OpenFile("sub"); err == nil {
 		t.Error("OpenFile on a directory should fail")
 	}

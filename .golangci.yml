@@ -1,7 +1,1 @@
 version: "2"
-
-linters:
-  exclusions:
-    # Unchecked Close, fmt.Fprint*, os.Remove* and the like.
-    presets:
-      - std-error-handling

@@ -21,12 +21,20 @@ func newWatcher(t *testing.T) (*Watcher, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { root.Close() })
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	w, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { w.Close() })
+	t.Cleanup(func() {
+		if err := w.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return w, dir
 }
 
@@ -187,7 +195,9 @@ func TestSubscribeErrors(t *testing.T) {
 func TestClose(t *testing.T) {
 	w, _ := newWatcher(t)
 	c := subscribe(t, w, ".")
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case _, ok := <-c:
 		if ok {

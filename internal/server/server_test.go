@@ -64,7 +64,11 @@ func newServerFFmpeg(t *testing.T, tok, ffmpeg string) (*httptest.Server, string
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	thumbs, err := thumb.New(r, filepath.Join(base, "cache"))
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +81,11 @@ func newServerFFmpeg(t *testing.T, tok, ffmpeg string) (*httptest.Server, string
 	ui := fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ui")}}
 	ts := httptest.NewServer(New(Config{Root: r, Thumbs: thumbs, Watch: w, Token: tok, UI: ui, Version: "test", Logger: log.New(io.Discard, "", 0)}))
 	t.Cleanup(ts.Close)
-	t.Cleanup(func() { w.Close() }) // runs first: ends open event streams, which ts.Close would wait for
+	t.Cleanup(func() { // runs first: ends open event streams, which ts.Close would wait for
+		if err := w.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return ts, base
 }
 
@@ -331,7 +339,9 @@ func TestEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
+		if err := res.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
 		if res.StatusCode != want {
 			t.Errorf("events for %q: %d; want %d", q, res.StatusCode, want)
 		}
@@ -341,7 +351,11 @@ func TestEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if ct := res.Header.Get("Content-Type"); res.StatusCode != http.StatusOK || ct != "text/event-stream" {
 		t.Fatalf("events: %d %q", res.StatusCode, ct)
 	}
@@ -378,14 +392,20 @@ func TestEventsDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	ts := httptest.NewServer(New(Config{Root: r, UI: fstest.MapFS{}}))
 	defer ts.Close()
 	res, err := http.Get(ts.URL + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	if err := res.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// 204 makes EventSource give up instead of reconnecting forever.
 	if res.StatusCode != http.StatusNoContent {
 		t.Fatalf("events without a watcher: %d; want 204", res.StatusCode)
@@ -464,7 +484,11 @@ func readZip(t *testing.T, c *http.Client, url string) (map[string]string, *zip.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	data, _ := io.ReadAll(res.Body)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: %d %s", url, res.StatusCode, data)
@@ -480,7 +504,9 @@ func readZip(t *testing.T, c *http.Client, url string) (map[string]string, *zip.
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(rc)
-		rc.Close()
+		if err := rc.Close(); err != nil {
+			t.Fatal(err)
+		}
 		got[f.Name] = string(b)
 	}
 	return got, zr, res
@@ -576,7 +602,9 @@ func TestZipErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
+		if err := res.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
 		if res.StatusCode != code {
 			t.Errorf("%s: %d; want %d", path, res.StatusCode, code)
 		}

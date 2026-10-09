@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -74,7 +75,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.StringVar(&o.ffmpeg, "ffmpeg", os.Getenv("KROPKA_FFMPEG"), `ffmpeg for video thumbnails, or "off" (default: ffmpeg on PATH, if any)`)
 	fs.BoolVar(&o.version, "version", false, "print version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "kropka %s — serve . to your phone\n\nUsage: kropka [flags] [dir]\n\nFlags:\n", version)
+		_, _ = fmt.Fprintf(stderr, "kropka %s — serve . to your phone\n\nUsage: kropka [flags] [dir]\n\nFlags:\n", version)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -84,8 +85,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if o.version {
-		fmt.Fprintln(stdout, "kropka", version)
-		return nil
+		_, err := fmt.Fprintln(stdout, "kropka", version)
+		return err
 	}
 
 	dir := "."
@@ -101,16 +102,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	var thumbs *thumb.Service
 	if !o.noThumbs {
 		thumbs, err = openThumbs(o.cacheDir, root)
 		if err != nil {
 			// Not fatal: the grid falls back to the originals.
-			fmt.Fprintln(stderr, "kropka: thumbnails disabled:", err)
+			_, _ = fmt.Fprintln(stderr, "kropka: thumbnails disabled:", err)
 		} else if ffmpeg, err := findFFmpeg(o.ffmpeg); err != nil {
-			fmt.Fprintln(stderr, "kropka: video thumbnails disabled:", err)
+			_, _ = fmt.Fprintln(stderr, "kropka: video thumbnails disabled:", err)
 		} else {
 			thumbs.SetFFmpeg(ffmpeg)
 		}
@@ -119,10 +120,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	watcher, err := watch.New(root)
 	if err != nil {
 		// Not fatal: the page still reloads on refresh and when refocused.
-		fmt.Fprintln(stderr, "kropka: live reload disabled:", err)
+		_, _ = fmt.Fprintln(stderr, "kropka: live reload disabled:", err)
 		watcher = nil
 	} else {
-		defer watcher.Close()
+		defer func() { _ = watcher.Close() }()
 	}
 
 	token := o.token
@@ -167,10 +168,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if watcher != nil {
 		// Event streams never go idle on their own; closing the watcher ends
 		// them so Shutdown doesn't wait out its timeout.
-		srv.RegisterOnShutdown(func() { watcher.Close() })
+		srv.RegisterOnShutdown(func() { _ = watcher.Close() })
 	}
 
-	printBanner(stdout, root.Dir(), bind, port, token, o.lan || o.qr)
+	_, _ = io.WriteString(stdout, banner(root.Dir(), bind, port, token, o.lan || o.qr))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -182,7 +183,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	case <-ctx.Done():
 	}
-	fmt.Fprintln(stdout, "\nbye.")
+	_, _ = fmt.Fprintln(stdout, "\nbye.")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
@@ -228,8 +229,9 @@ func listen(bind string, port int) (net.Listener, int, error) {
 	return nil, 0, lastErr
 }
 
-func printBanner(w io.Writer, dir, bind string, port int, token string, showQR bool) {
-	fmt.Fprintf(w, "\n  ● kropka %s\n  serving %s\n\n", version, dir)
+func banner(dir, bind string, port int, token string, showQR bool) string {
+	var w strings.Builder
+	fmt.Fprintf(&w, "\n  ● kropka %s\n  serving %s\n\n", version, dir)
 
 	urls := []string{}
 	if bind == "0.0.0.0" || bind == "::" {
@@ -245,24 +247,25 @@ func printBanner(w io.Writer, dir, bind string, port int, token string, showQR b
 		urls = append(urls, makeURL(host, port, token))
 	}
 	for _, u := range urls {
-		fmt.Fprintf(w, "  → %s\n", u)
+		fmt.Fprintf(&w, "  → %s\n", u)
 	}
 
 	if bind == "127.0.0.1" {
-		fmt.Fprintf(w, "\n  Remote server? Forward the port from your machine:\n    ssh -L %d:localhost:%d <server>\n  then open the link above. Use --lan to expose it on the network instead.\n", port, port)
+		fmt.Fprintf(&w, "\n  Remote server? Forward the port from your machine:\n    ssh -L %d:localhost:%d <server>\n  then open the link above. Use --lan to expose it on the network instead.\n", port, port)
 	}
 	if token == "" {
-		fmt.Fprintln(w, "\n  ! access token disabled (--no-auth): anyone who can reach this port can read the files")
+		fmt.Fprintln(&w, "\n  ! access token disabled (--no-auth): anyone who can reach this port can read the files")
 	}
 
 	if showQR {
 		target := urls[len(urls)-1] // a LAN address if there is one
 		if q, err := qrcode.New(target, qrcode.Low); err == nil {
-			fmt.Fprintf(w, "\n%s  %s\n", indent(q.ToSmallString(false), "  "), target)
+			fmt.Fprintf(&w, "\n%s  %s\n", indent(q.ToSmallString(false), "  "), target)
 		}
 	}
-	fmt.Fprintln(w, "\n  Ctrl+C to stop")
-	fmt.Fprintln(w)
+	fmt.Fprintln(&w, "\n  Ctrl+C to stop")
+	fmt.Fprintln(&w)
+	return w.String()
 }
 
 func makeURL(host string, port int, token string) string {

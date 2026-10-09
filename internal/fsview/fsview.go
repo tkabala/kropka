@@ -101,7 +101,7 @@ func (r *Root) List(rel string) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	st, err := f.Stat()
 	if err != nil {
@@ -172,7 +172,7 @@ func (r *Root) walk(dir string, fn func(string, fs.FileInfo) error) error {
 		return nil
 	}
 	dirents, err := f.ReadDir(-1)
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		return nil
 	}
@@ -245,11 +245,11 @@ func (r *Root) OpenFile(rel string) (*os.File, fs.FileInfo, error) {
 	}
 	info, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
-		f.Close()
+		_ = f.Close()
 		return nil, nil, fs.ErrNotExist
 	}
 	return f, info, nil

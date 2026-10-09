@@ -42,7 +42,11 @@ func thumbSize(t *testing.T, p string) (int, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	cfg, format, err := image.DecodeConfig(f)
 	if err != nil || format != "jpeg" {
 		t.Fatalf("thumbnail is %q, %v; want a JPEG", format, err)

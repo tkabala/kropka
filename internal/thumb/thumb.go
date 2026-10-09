@@ -109,8 +109,13 @@ func New(root *fsview.Root, cacheDir string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	probe.Close()
-	os.Remove(probe.Name())
+	err = probe.Close()
+	if rerr := os.Remove(probe.Name()); err == nil {
+		err = rerr
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Service{
 		root:     root,
@@ -170,7 +175,7 @@ func (s *Service) Get(ctx context.Context, rel string) (string, error) {
 
 func (s *Service) key(rel string, info fs.FileInfo) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%d\x00%d\x00%d", s.root.Dir(), rel, info.Size(), info.ModTime().UnixNano(), Size)
+	h.Write(fmt.Appendf(nil, "%s\x00%s\x00%d\x00%d\x00%d", s.root.Dir(), rel, info.Size(), info.ModTime().UnixNano(), Size))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -215,7 +220,7 @@ func (s *Service) generate(ctx context.Context, rel string, size int64, dst stri
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	video := fsview.KindOf(rel) == fsview.KindVideo
 	var out *image.RGBA
@@ -350,7 +355,7 @@ func writeAtomic(dst string, b []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // no-op after a successful rename
+	defer func() { _ = os.Remove(tmp.Name()) }() // no-op after a successful rename
 	_, err = tmp.Write(b)
 	if cerr := tmp.Close(); err == nil {
 		err = cerr

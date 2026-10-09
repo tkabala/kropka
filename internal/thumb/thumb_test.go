@@ -28,7 +28,11 @@ func setup(t *testing.T) (*Service, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { root.Close() })
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	s, err := New(root, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +90,11 @@ func decodeFile(t *testing.T, p string) (image.Image, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	img, format, err := image.Decode(f)
 	if err != nil {
 		t.Fatal(err)
@@ -403,7 +411,11 @@ func TestUnwritableCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() {
+		if err := root.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	cache := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cache, version), 0o700); err != nil {
 		t.Fatal(err)
