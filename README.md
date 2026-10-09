@@ -1,5 +1,10 @@
 # kropka
 
+[![ci](https://github.com/tkabala/kropka/actions/workflows/ci.yml/badge.svg)](https://github.com/tkabala/kropka/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/tkabala/kropka)](https://github.com/tkabala/kropka/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/tkabala/kropka.svg)](https://pkg.go.dev/github.com/tkabala/kropka)
+[![License: MIT](https://img.shields.io/github/license/tkabala/kropka)](LICENSE)
+
 **Serve `.` to your phone in one command.**
 
 *kropka* is Polish for "dot", and that is what it serves: the current directory, as a
