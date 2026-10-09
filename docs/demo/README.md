@@ -10,7 +10,8 @@ make demo        # or docs/demo/record.sh
 ```
 
 This writes `out/demo.gif` and `out/demo.mp4`. To redo only those from the
-last recordings, run `record.sh --stitch`.
+last recordings, run `record.sh --stitch`. To update the README, drag
+`out/demo.gif` into it in GitHub's web editor.
 
 ## What you need
 
