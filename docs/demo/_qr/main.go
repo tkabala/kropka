@@ -25,7 +25,8 @@ func main() {
 	}
 	q.ForegroundColor = color.RGBA{0x1e, 0x1e, 0x2e, 0xff} // Catppuccin Mocha: the background
 	q.BackgroundColor = color.RGBA{0xcd, 0xd6, 0xf4, 0xff} // and the text
-	if err := q.WriteFile(-8, os.Args[2]); err != nil { // 8 px per module
+	// 8 px per module
+	if err := q.WriteFile(-8, os.Args[2]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
