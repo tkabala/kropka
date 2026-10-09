@@ -1,0 +1,11 @@
+{
+  "name": "kropka-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "phone": "node phone.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.0"
+  }
+}

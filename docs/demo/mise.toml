@@ -1,0 +1,6 @@
+# Tools for record.sh, on top of the repo's mise.toml: `mise install` here,
+# then `mise x -- ./record.sh`. It also needs Docker and ffmpeg.
+[tools]
+node = "22"
+# The release has mac/, linux/ and win/ builds; mise would pick mac/.
+"github:ImageOptim/gifski" = { version = "latest", bin_path = "linux" }
