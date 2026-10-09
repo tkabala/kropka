@@ -116,7 +116,9 @@ func TestGenerateJPEG(t *testing.T) {
 	// A new version of the file gets a new thumbnail.
 	writeJPEG(t, filepath.Join(dir, "a.jpg"), noisy(540, 720), nil)
 	future := time.Now().Add(time.Minute)
-	os.Chtimes(filepath.Join(dir, "a.jpg"), future, future)
+	if err := os.Chtimes(filepath.Join(dir, "a.jpg"), future, future); err != nil {
+		t.Fatal(err)
+	}
 	p3, err := s.Get(context.Background(), "a.jpg")
 	if err != nil || p3 == p {
 		t.Fatalf("after change: %q %v; want a new path", p3, err)
@@ -141,8 +143,12 @@ func TestTransparentPNG(t *testing.T) {
 	img := noisy(600, 600)
 	img.Pix[3] = 0 // one transparent pixel is enough
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
-	os.WriteFile(filepath.Join(dir, "t.png"), buf.Bytes(), 0o644)
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "t.png"), buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	p, err := s.Get(context.Background(), "t.png")
 	if err != nil {
@@ -159,9 +165,15 @@ func TestPassthrough(t *testing.T) {
 	writeJPEG(t, filepath.Join(dir, "small.jpg"), image.NewRGBA(image.Rect(0, 0, 1200, 800)), nil)
 	// Big file, small image: nothing to gain from a thumbnail.
 	writeJPEG(t, filepath.Join(dir, "narrow.jpg"), noisy(4000, 300), nil)
-	os.WriteFile(filepath.Join(dir, "tiny.png"), []byte("not even an image"), 0o644)
-	os.WriteFile(filepath.Join(dir, "x.svg"), bytes.Repeat([]byte("<svg/>"), 20000), 0o644)
-	os.WriteFile(filepath.Join(dir, "broken.jpg"), append([]byte{0xFF, 0xD8, 0xFF}, make([]byte, 100<<10)...), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "tiny.png"), []byte("not even an image"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.svg"), bytes.Repeat([]byte("<svg/>"), 20000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "broken.jpg"), append([]byte{0xFF, 0xD8, 0xFF}, make([]byte, 100<<10)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, name := range []string{"small.jpg", "narrow.jpg", "tiny.png", "x.svg", "broken.jpg"} {
 		if _, err := s.Get(context.Background(), name); !errors.Is(err, ErrPassthrough) {
@@ -304,10 +316,16 @@ func TestPrune(t *testing.T) {
 	}
 	for p, keep := range files {
 		full := filepath.Join(cache, p)
-		os.MkdirAll(filepath.Dir(full), 0o755)
-		os.WriteFile(full, []byte("x"), 0o644)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		if !keep || p == "v1/notes.txt" || p == "unrelated.jpg" {
-			os.Chtimes(full, old, old)
+			if err := os.Chtimes(full, old, old); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	prune(cache, time.Now())
@@ -324,7 +342,9 @@ func TestFailureRemembered(t *testing.T) {
 	// Valid header, garbage after: DecodeConfig passes, Decode fails.
 	writeJPEG(t, filepath.Join(dir, "a.jpg"), noisy(720, 540), nil)
 	b, _ := os.ReadFile(filepath.Join(dir, "a.jpg"))
-	os.WriteFile(filepath.Join(dir, "broken.jpg"), b[:len(b)/2], 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "broken.jpg"), b[:len(b)/2], 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := s.Get(context.Background(), "broken.jpg"); !errors.Is(err, ErrPassthrough) {
 		t.Fatalf("first Get: %v; want ErrPassthrough", err)
@@ -361,8 +381,12 @@ func TestThumbnailLargerThanOriginal(t *testing.T) {
 		img.Pix[i] = byte(r.IntN(256))
 	}
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
-	os.WriteFile(filepath.Join(dir, "p.png"), buf.Bytes(), 0o644)
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "p.png"), buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := s.Get(context.Background(), "p.png"); !errors.Is(err, ErrPassthrough) {
 		t.Fatalf("err %v; want ErrPassthrough for a thumbnail bigger than the original", err)
@@ -381,9 +405,17 @@ func TestUnwritableCache(t *testing.T) {
 	}
 	defer root.Close()
 	cache := t.TempDir()
-	os.MkdirAll(filepath.Join(cache, version), 0o700)
-	os.Chmod(filepath.Join(cache, version), 0o500)
-	defer os.Chmod(filepath.Join(cache, version), 0o700)
+	if err := os.MkdirAll(filepath.Join(cache, version), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(cache, version), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(filepath.Join(cache, version), 0o700); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, err := New(root, cache); err == nil {
 		t.Fatal("New succeeded with a read-only cache dir")
 	}
@@ -393,8 +425,14 @@ func TestCacheWriteError(t *testing.T) {
 	needReadOnlyDirs(t)
 	s, dir := setup(t)
 	writeJPEG(t, filepath.Join(dir, "a.jpg"), noisy(720, 540), nil)
-	os.Chmod(s.dir, 0o500)
-	defer os.Chmod(s.dir, 0o700)
+	if err := os.Chmod(s.dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(s.dir, 0o700); err != nil {
+			t.Error(err)
+		}
+	})
 	_, err := s.Get(context.Background(), "a.jpg")
 	// Not ErrPermission: that would read as "the image is not readable".
 	if !errors.Is(err, ErrCache) || errors.Is(err, fs.ErrPermission) {

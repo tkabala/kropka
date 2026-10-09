@@ -58,7 +58,9 @@ func TestVideoThumbs(t *testing.T) {
 	makeVideo(t, ffmpeg, filepath.Join(dir, "wide.mp4"), "640x360", 3, "-c:v", "libx264", "-pix_fmt", "yuv420p")
 	// Shorter than frameAt: falls back to the first frame. Small, too: videos have no size floor.
 	makeVideo(t, ffmpeg, filepath.Join(dir, "short tall.webm"), "360x640", 0.4)
-	os.WriteFile(filepath.Join(dir, "broken.mp4"), make([]byte, 100<<10), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "broken.mp4"), make([]byte, 100<<10), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	for name, want := range map[string][2]int{"wide.mp4": {853, 480}, "short tall.webm": {480, 853}} {
 		p, err := s.Get(context.Background(), name)
@@ -84,7 +86,9 @@ func TestVideoThumbs(t *testing.T) {
 
 func TestVideoWithoutFFmpeg(t *testing.T) {
 	s, dir := setup(t)
-	os.WriteFile(filepath.Join(dir, "clip.mp4"), make([]byte, 100<<10), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "clip.mp4"), make([]byte, 100<<10), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if s.Videos() {
 		t.Error("Videos() true without SetFFmpeg")
 	}
@@ -119,7 +123,9 @@ func TestVideoFFmpegMisbehaves(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			s, dir := setup(t)
 			s.SetFFmpeg(fakeFFmpeg(t, tc.script))
-			os.WriteFile(filepath.Join(dir, "v.mp4"), []byte("x"), 0o644)
+			if err := os.WriteFile(filepath.Join(dir, "v.mp4"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 			start := time.Now()
 			_, err := s.Get(context.Background(), "v.mp4")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -138,7 +144,9 @@ func TestVideoFFmpegMisbehaves(t *testing.T) {
 func TestVideoCallerGoesAway(t *testing.T) {
 	s, dir := setup(t)
 	s.SetFFmpeg(fakeFFmpeg(t, "exec sleep 10"))
-	os.WriteFile(filepath.Join(dir, "v.mp4"), []byte("x"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "v.mp4"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()

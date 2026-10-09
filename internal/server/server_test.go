@@ -43,12 +43,22 @@ func newServerFFmpeg(t *testing.T, tok, ffmpeg string) (*httptest.Server, string
 	if err := os.MkdirAll(filepath.Join(root, "pics"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(base, "secret.txt"), []byte("secret"), 0o644)
-	os.WriteFile(filepath.Join(root, "pics", "a.jpg"), []byte("0123456789"), 0o644)
-	os.WriteFile(filepath.Join(root, "evil.html"), []byte("<script>alert(1)</script>"), 0o644)
-	os.MkdirAll(filepath.Join(root, "docs"), 0o755)
-	os.WriteFile(filepath.Join(root, "docs", "notes.md"), []byte("# Notes\n\n[pic](../pics/a.jpg) [up](../evil.html) [folder](../pics) "+
-		"[zip](../x.zip) [secret](../.env) [out](../../secret.txt) [sp](my%20notes.md)\n\n![p](../pics/a.jpg)\n\n<script>alert(1)</script>\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(base, "secret.txt"), []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pics", "a.jpg"), []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "evil.html"), []byte("<script>alert(1)</script>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "notes.md"), []byte("# Notes\n\n[pic](../pics/a.jpg) [up](../evil.html) [folder](../pics) "+
+		"[zip](../x.zip) [secret](../.env) [out](../../secret.txt) [sp](my%20notes.md)\n\n![p](../pics/a.jpg)\n\n<script>alert(1)</script>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	r, err := fsview.Open(root, false)
 	if err != nil {
@@ -125,7 +135,9 @@ func TestList(t *testing.T) {
 	var body struct {
 		Entries []fsview.Entry `json:"entries"`
 	}
-	json.NewDecoder(res.Body).Decode(&body)
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if len(body.Entries) != 1 || body.Entries[0].Name != "a.jpg" || body.Entries[0].Kind != fsview.KindImage {
 		t.Fatalf("entries = %+v", body.Entries)
 	}
@@ -139,7 +151,9 @@ func TestInfo(t *testing.T) {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	}
-	json.NewDecoder(res.Body).Decode(&body)
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if body.Name != "root" || body.Version != "test" {
 		t.Fatalf("info = %+v; want name root, version test", body)
 	}
@@ -152,7 +166,9 @@ func TestListFile(t *testing.T) {
 	var body struct {
 		Error string `json:"error"`
 	}
-	json.NewDecoder(res.Body).Decode(&body)
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if res.StatusCode != http.StatusBadRequest || body.Error != fsview.ErrNotDir.Error() {
 		t.Fatalf("ls on a file: %d %q; want 400 %q", res.StatusCode, body.Error, fsview.ErrNotDir)
 	}
@@ -227,8 +243,12 @@ func TestThumb(t *testing.T) {
 		img.Pix[i] = byte(i * 7919 % 251)
 	}
 	var buf bytes.Buffer
-	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100})
-	os.WriteFile(filepath.Join(base, "root", "pics", "big photo.jpg"), buf.Bytes(), 0o644)
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "root", "pics", "big photo.jpg"), buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	res, _ := c.Get(ts.URL + "/thumb/pics/big%20photo.jpg?v=1")
 	got, _, err := image.DecodeConfig(res.Body)
@@ -275,14 +295,24 @@ func TestThumbCacheFailure(t *testing.T) {
 		img.Pix[i] = byte(i * 7919 % 251)
 	}
 	var buf bytes.Buffer
-	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100})
-	os.WriteFile(filepath.Join(base, "root", "pics", "big.jpg"), buf.Bytes(), 0o644)
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "root", "pics", "big.jpg"), buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// The cache becomes read-only after startup (a full disk behaves alike).
 	dirs, _ := filepath.Glob(filepath.Join(base, "cache", "v*"))
 	for _, d := range dirs {
-		os.Chmod(d, 0o500)
-		t.Cleanup(func() { os.Chmod(d, 0o700) })
+		if err := os.Chmod(d, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chmod(d, 0o700); err != nil {
+				t.Error(err)
+			}
+		})
 	}
 
 	// Not 403: the original is readable, so show it.
@@ -315,7 +345,9 @@ func TestEvents(t *testing.T) {
 	if ct := res.Header.Get("Content-Type"); res.StatusCode != http.StatusOK || ct != "text/event-stream" {
 		t.Fatalf("events: %d %q", res.StatusCode, ct)
 	}
-	os.WriteFile(filepath.Join(base, "root", "pics", "b.jpg"), []byte("new"), 0o644)
+	if err := os.WriteFile(filepath.Join(base, "root", "pics", "b.jpg"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	lines := make(chan string)
 	go func() {
@@ -374,7 +406,9 @@ func TestRender(t *testing.T) {
 		HTML      string `json:"html"`
 		Truncated bool   `json:"truncated"`
 	}
-	json.NewDecoder(res.Body).Decode(&body)
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
 		`<h1 id="md-notes">`,
 		`href="#/pics?view=a.jpg"`,         // viewable: opens in the viewer
@@ -407,13 +441,17 @@ func TestRenderTruncated(t *testing.T) {
 	renderLimit = 5
 	ts, base := newServer(t, token)
 	// The limit cuts "€" (3 bytes) after its first 2.
-	os.WriteFile(filepath.Join(base, "root", "long.txt"), []byte("abc€def"), 0o644)
+	if err := os.WriteFile(filepath.Join(base, "root", "long.txt"), []byte("abc€def"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	res, _ := authed(t, ts).Get(ts.URL + "/api/render?path=long.txt")
 	var body struct {
 		HTML      string `json:"html"`
 		Truncated bool   `json:"truncated"`
 	}
-	json.NewDecoder(res.Body).Decode(&body)
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
 	if !body.Truncated || body.HTML != `<pre class="plain">abc</pre>` {
 		t.Fatalf("got %+v; want truncated \"abc\"", body)
 	}
@@ -451,12 +489,22 @@ func readZip(t *testing.T, c *http.Client, url string) (map[string]string, *zip.
 func TestZip(t *testing.T) {
 	ts, base := newServer(t, token)
 	root := filepath.Join(base, "root")
-	os.MkdirAll(filepath.Join(root, "pics", "2026", "empty"), 0o755)
-	os.MkdirAll(filepath.Join(root, "pics", ".git"), 0o755)
-	os.WriteFile(filepath.Join(root, "pics", ".git", "config"), []byte("hidden"), 0o644)
-	os.WriteFile(filepath.Join(root, "pics", "2026", "zażółć 🎉.md"), []byte(strings.Repeat("text ", 1000)), 0o644)
+	if err := os.MkdirAll(filepath.Join(root, "pics", "2026", "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pics", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pics", ".git", "config"), []byte("hidden"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pics", "2026", "zażółć 🎉.md"), []byte(strings.Repeat("text ", 1000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	old := time.Date(2020, 1, 2, 3, 4, 6, 0, time.UTC)
-	os.Chtimes(filepath.Join(root, "pics", "a.jpg"), old, old)
+	if err := os.Chtimes(filepath.Join(root, "pics", "a.jpg"), old, old); err != nil {
+		t.Fatal(err)
+	}
 	c := authed(t, ts)
 
 	got, zr, res := readZip(t, c, ts.URL+"/zip/pics")
@@ -546,7 +594,9 @@ func TestZipLimits(t *testing.T) {
 
 	res, _ := c.Get(ts.URL + "/zip/?check=1")
 	var ok struct{ Files, Size int64 }
-	json.NewDecoder(res.Body).Decode(&ok)
+	if err := json.NewDecoder(res.Body).Decode(&ok); err != nil {
+		t.Fatal(err)
+	}
 	if res.StatusCode != http.StatusOK || ok.Files != 3 {
 		t.Fatalf("check: %d %+v; want 200 and 3 files", res.StatusCode, ok)
 	}
@@ -559,7 +609,9 @@ func TestZipLimits(t *testing.T) {
 		for _, q := range []string{"?check=1", ""} {
 			res, _ := c.Get(ts.URL + "/zip/" + q)
 			var body struct{ Error string }
-			json.NewDecoder(res.Body).Decode(&body)
+			if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
 			if res.StatusCode != http.StatusRequestEntityTooLarge || !strings.Contains(body.Error, "too large") {
 				t.Errorf("limits %d B/%d files, %q: %d %q; want 413", zipMaxBytes, zipMaxFiles, q, res.StatusCode, body.Error)
 			}
@@ -596,13 +648,17 @@ func TestVideoThumb(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body struct{ VideoThumbs bool }
-		json.NewDecoder(res.Body).Decode(&body)
+		if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
 		return body.VideoThumbs
 	}
 
 	// Without ffmpeg: no thumbnail, and no redirect either, since <img> can't show a video.
 	ts, base := newServer(t, token)
-	os.WriteFile(filepath.Join(base, "root", "clip.mp4"), make([]byte, 100<<10), 0o644)
+	if err := os.WriteFile(filepath.Join(base, "root", "clip.mp4"), make([]byte, 100<<10), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	c := authed(t, ts)
 	if listing(c, ts.URL) {
 		t.Error("videoThumbs true without ffmpeg")
@@ -634,7 +690,9 @@ func TestVideoThumb(t *testing.T) {
 		t.Errorf("video thumb %dx%d; want 640x%d", got.Width, got.Height, thumb.Size)
 	}
 	// A damaged video: 404, so the grid falls back to the video itself.
-	os.WriteFile(filepath.Join(base, "root", "broken.mp4"), make([]byte, 100<<10), 0o644)
+	if err := os.WriteFile(filepath.Join(base, "root", "broken.mp4"), make([]byte, 100<<10), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	res, _ = c.Get(ts.URL + "/thumb/broken.mp4")
 	if res.StatusCode != http.StatusNotFound {
 		t.Errorf("broken video: %d; want 404", res.StatusCode)
