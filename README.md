@@ -6,6 +6,8 @@
 fast, mobile-first gallery. Generate images, videos or reports on a server, run
 `kropka`, and browse them from your laptop or phone without copying anything.
 
+<img width="828" height="690" alt="kropka --lan in a terminal, and a phone that scans its QR code and browses the folder" src="https://github.com/user-attachments/assets/1eef2545-0537-4480-88b6-00d55d5712ac" />
+
 ```console
 $ kropka
 
