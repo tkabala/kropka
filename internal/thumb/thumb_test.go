@@ -477,3 +477,18 @@ func needReadOnlyDirs(t *testing.T) {
 		t.Skip("read-only directories are not enforced here")
 	}
 }
+
+func TestDefaultDir(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir()) // used on Linux and the BSDs
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Skip("no user cache dir:", err)
+	}
+	got, err := DefaultDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(cache, "kropka", "thumbs"); got != want {
+		t.Errorf("DefaultDir() = %q; want %q", got, want)
+	}
+}
