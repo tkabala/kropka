@@ -377,26 +377,37 @@ func touch(p string, st fs.FileInfo) {
 
 // prune deletes thumbnails unused for maxAge and leftover temp files. It only
 // touches files kropka creates, inside version directories, so a cache dir
-// pointed somewhere unexpected loses nothing else.
+// pointed somewhere unexpected loses nothing else. Each directory is walked
+// through os.Root, so a subdirectory swapped for a symlink mid-walk can't
+// steer a delete outside it.
 func prune(cacheDir string, now time.Time) {
 	dirs, _ := filepath.Glob(filepath.Join(cacheDir, "v[0-9]*"))
 	for _, d := range dirs {
-		_ = filepath.WalkDir(d, func(p string, e fs.DirEntry, err error) error {
-			if err != nil || !e.Type().IsRegular() {
-				return nil
-			}
-			info, err := e.Info()
-			if err != nil {
-				return nil
-			}
-			age := now.Sub(info.ModTime())
-			name := e.Name()
-			if (isKey(name) && age > maxAge) || (strings.HasSuffix(name, ".tmp") && age > time.Hour) {
-				_ = os.Remove(p)
-			}
-			return nil
-		})
+		pruneDir(d, now)
 	}
+}
+
+func pruneDir(dir string, now time.Time) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return
+	}
+	defer func() { _ = root.Close() }()
+	_ = fs.WalkDir(root.FS(), ".", func(p string, e fs.DirEntry, err error) error {
+		if err != nil || !e.Type().IsRegular() {
+			return nil
+		}
+		info, err := e.Info()
+		if err != nil {
+			return nil
+		}
+		age := now.Sub(info.ModTime())
+		name := e.Name()
+		if (isKey(name) && age > maxAge) || (strings.HasSuffix(name, ".tmp") && age > time.Hour) {
+			_ = root.Remove(p)
+		}
+		return nil
+	})
 }
 
 func isKey(name string) bool {
