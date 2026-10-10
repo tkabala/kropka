@@ -18,6 +18,7 @@ import (
 // Kind is a coarse file category used by the UI to pick a renderer.
 type Kind string
 
+// The kinds an Entry can have.
 const (
 	KindDir   Kind = "dir"
 	KindImage Kind = "image"

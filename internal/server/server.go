@@ -66,7 +66,7 @@ func New(cfg Config) http.Handler {
 
 type srv struct{ cfg Config }
 
-func (s *srv) handleInfo(w http.ResponseWriter, r *http.Request) {
+func (s *srv) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":    filepath.Base(s.cfg.Root.Dir()),
 		"version": s.cfg.Version,

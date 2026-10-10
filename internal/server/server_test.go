@@ -90,7 +90,11 @@ func newServerFFmpeg(t *testing.T, tok, ffmpeg string) (*httptest.Server, string
 }
 
 func client(t *testing.T) *http.Client {
-	jar, _ := cookiejar.New(nil)
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &http.Client{Jar: jar}
 }
 

@@ -31,12 +31,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	_ "golang.org/x/image/bmp"
 	"golang.org/x/image/draw"
-	_ "golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sync/singleflight"
+
+	// Register the BMP, TIFF and WebP decoders with image.Decode.
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/tiff"
+	_ "golang.org/x/image/webp"
 
 	"github.com/tkabala/kropka/internal/fsview"
 )
