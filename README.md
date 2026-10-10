@@ -117,6 +117,8 @@ kropka is meant for short-lived, personal sharing.
 ```sh
 make run        # build and serve the current directory
 make test       # go test -race ./...
+make lint       # golangci-lint, and Biome for the UI
+make e2e        # Playwright tests of the UI in Chromium (needs Node)
 make docker     # local image
 make snapshot   # all release artifacts via GoReleaser, without publishing
 ```

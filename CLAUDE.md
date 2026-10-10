@@ -11,22 +11,24 @@ reload, zip, video, Markdown rendering). Keep it up to date when you change one 
 
 ## Commands
 
-Tool versions are pinned in `mise.toml` (Go, goreleaser, golangci-lint).
+Tool versions are pinned in `mise.toml` (Go, goreleaser, golangci-lint, Biome, Node).
 
 ```sh
 make build      # CGO_ENABLED=0 build into bin/kropka, version from git describe
 make run        # build and serve the current directory
 make test       # go test -race ./...
 make vet        # go vet ./...
-make lint       # golangci-lint run (v2, with revive enabled)
+make lint       # golangci-lint run (v2, with revive enabled), then biome lint for the UI
+make e2e        # Playwright tests of the UI against the real binary (e2e/)
 make snapshot   # all release artifacts via GoReleaser, no publishing
 make demo       # record the README demo (docs/demo/README.md)
 ```
 
-Single test: `go test -race -run TestName ./internal/server/`.
+Single test: `go test -race -run TestName ./internal/server/`, or
+`cd e2e && npx playwright test -g "test name"` for the UI.
 
 CI (`.github/workflows/ci.yml`) runs vet and race tests on Linux, macOS and Windows, plus
-golangci-lint and govulncheck. Video thumbnail tests skip when `ffmpeg` isn't on `PATH`.
+golangci-lint, Biome (`biome ci`), the Playwright suite in Chromium and govulncheck. Video thumbnail tests skip when `ffmpeg` isn't on `PATH`.
 Code must stay portable: there are `_unix`/`_windows` and `_other` file splits, and several
 fixes have been Windows-specific.
 
@@ -51,5 +53,7 @@ fixes have been Windows-specific.
 - Every error is checked or explicitly discarded (`_ =`); the linters enforce this.
 - Releases: push a `v*` tag; GoReleaser publishes binaries and a multi-arch GHCR image.
   `main.version` is set via `-ldflags`.
+- UI changes come with an e2e test in `e2e/tests/`. Each test gets its own temp folder and
+  kropka (`fixtures.js`), so tests may write to it. Biome's formatter is off on purpose.
 - `docs/demo/` is the scripted README demo recording (Playwright + VHS); it is separate
   from the Go module's runtime code.

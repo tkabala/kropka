@@ -64,7 +64,8 @@ the phone's back button close the viewer and walk up folders naturally.
 **No frontend toolchain (for now).** The UI is small enough that vanilla JS keeps the repo
 approachable. Markdown and code highlighting are done on the server (below) partly to keep it
 that way. If the UI grows (PhotoSwipe), the plan is Vite building into `internal/ui/static`,
-still embedded.
+still embedded. Tooling stays outside the app: Biome lints it and `e2e/` drives the real
+binary with Playwright, but neither is needed to build or run kropka.
 
 **Markdown and code are rendered on the server.** The viewer asks `/api/render` for a text
 file and puts the HTML it gets into the page. `.md` files go through goldmark with the GFM

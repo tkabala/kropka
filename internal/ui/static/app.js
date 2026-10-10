@@ -489,7 +489,7 @@ function resetZoom(img) {
 }
 
 function zoomReady() {
-  return zoom.img !== null && zoom.img.isConnected && zoom.img.offsetWidth > 0;
+  return zoom.img?.isConnected === true && zoom.img.offsetWidth > 0;
 }
 
 // At least 4x, and far enough to see the original's pixels doubled.

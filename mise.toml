@@ -2,3 +2,5 @@
 go = "1.26.8"
 goreleaser = "2"
 golangci-lint = "2.14.0"
+biome = "2.5.15"
+node = "22"

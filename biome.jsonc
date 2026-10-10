@@ -1,0 +1,34 @@
+// Lints the embedded UI and the e2e tests: `biome lint` (mise.toml pins it).
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["internal/ui/static/**", "e2e/**", "!internal/ui/static/favicon.svg", "!e2e/package-lock.json"]
+  },
+  // The UI keeps short statements on one line; the formatter would undo that.
+  "formatter": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        // It doesn't count aria-label as a name, so it flags labelled icon links.
+        "useAnchorContent": "off"
+      },
+      "style": {
+        "useTemplate": "off"
+      },
+      "complexity": {
+        // [hidden] { display: none !important } has to beat every display rule.
+        "noImportantStyles": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // A classic script, not a module, so "use strict" does something.
+      "includes": ["internal/ui/static/app.js"],
+      "linter": { "rules": { "suspicious": { "noRedundantUseStrict": "off" } } }
+    }
+  ]
+}
