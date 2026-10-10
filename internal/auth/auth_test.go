@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,15 @@ func TestMiddleware(t *testing.T) {
 		c := cookies[0]
 		if c.Name != CookieName || c.Value != "secret" || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" || c.Secure {
 			t.Errorf("cookie %+v", c)
+		}
+	})
+
+	t.Run("redirect stays on this host", func(t *testing.T) {
+		for _, target := range []string{"//evil.com/?t=secret", "///evil.com/x?t=secret"} {
+			rec := serve(httptest.NewRequest("GET", "http://kropka"+target, nil))
+			if loc := rec.Header().Get("Location"); strings.HasPrefix(loc, "//") || !strings.HasPrefix(loc, "/") {
+				t.Errorf("%s: Location %q leaves the host", target, loc)
+			}
 		}
 	})
 

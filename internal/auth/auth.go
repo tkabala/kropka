@@ -10,6 +10,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -44,7 +45,9 @@ func Middleware(token string, next http.Handler) http.Handler {
 				deny(w)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{
+			// Secure only over TLS: kropka is usually reached over plain HTTP
+			// on a LAN, where a Secure cookie would never be sent back.
+			http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: see above
 				Name:     CookieName,
 				Value:    token,
 				Path:     "/",
@@ -60,7 +63,13 @@ func Middleware(token string, next http.Handler) http.Handler {
 			qs := u.Query()
 			qs.Del(QueryParam)
 			u.RawQuery = qs.Encode()
-			http.Redirect(w, r, u.RequestURI(), http.StatusSeeOther)
+			// A path like //evil.com would leave the site as a
+			// scheme-relative URL; keep the redirect on this host.
+			loc := u.RequestURI()
+			if strings.HasPrefix(loc, "//") {
+				loc = "/" + strings.TrimLeft(loc, "/")
+			}
+			http.Redirect(w, r, loc, http.StatusSeeOther) //nolint:gosec // G710: same-host path, see above
 			return
 		}
 		if c, err := r.Cookie(CookieName); err == nil && match(c.Value) {
