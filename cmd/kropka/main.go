@@ -186,7 +186,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	_, _ = fmt.Fprintln(stdout, "\nbye.")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	// Shutdown waits up to 5s on connections that haven't sent a request
+	// yet, and browsers open spare ones ahead of time: drop what's left.
+	return srv.Close()
 }
 
 func openThumbs(dir string, root *fsview.Root) (*thumb.Service, error) {

@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -81,6 +82,14 @@ func TestRun(t *testing.T) {
 	if string(body) != "hi" {
 		t.Errorf("raw/hello.txt: %d %q", res.StatusCode, body)
 	}
+
+	// A connection that never sends a request, like a browser's spare one,
+	// must not keep run from stopping.
+	idle, err := net.Dial("tcp", strings.TrimPrefix(strings.TrimSuffix(url, "/?t=tok"), "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idle.Close() }()
 
 	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
 		t.Fatal(err)
