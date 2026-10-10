@@ -1,4 +1,12 @@
 version: "2"
 linters:
   enable:
+    - gosec
     - revive
+  exclusions:
+    rules:
+      # Tests build fixtures with ordinary file modes, seeded math/rand data
+      # and ffmpeg calls of their own; gosec's rules target production code.
+      - path: _test\.go
+        linters:
+          - gosec

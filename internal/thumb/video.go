@@ -82,6 +82,7 @@ func (s *Service) grabFrame(ctx context.Context, f *os.File, at time.Duration) (
 	tctx, cancel := context.WithTimeout(ctx, ffmpegTimeout)
 	defer cancel()
 	size := strconv.Itoa(Size)
+	//nolint:gosec // G204: ffmpeg is the configured binary and every argument is fixed
 	cmd := exec.CommandContext(tctx, s.ffmpeg,
 		"-hide_banner", "-loglevel", "error", "-nostdin",
 		"-ss", strconv.FormatFloat(at.Seconds(), 'f', -1, 64),

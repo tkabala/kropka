@@ -484,7 +484,7 @@ func (s *srv) handleThumb(w http.ResponseWriter, r *http.Request) {
 		s.thumbFailed(w, r, rel, err)
 		return
 	}
-	f, err := os.Open(p)
+	f, err := os.Open(p) //nolint:gosec // G304: p is a path in the thumbnail cache, not the served folder
 	if err != nil {
 		s.thumbFailed(w, r, rel, err) // pruned or removed since Get
 		return
@@ -527,7 +527,7 @@ func noThumb(w http.ResponseWriter, r *http.Request, rel string) {
 
 func redirectRaw(w http.ResponseWriter, r *http.Request, rel string) {
 	w.Header().Set("Cache-Control", "private, no-cache")
-	http.Redirect(w, r, rawPath(rel), http.StatusTemporaryRedirect)
+	http.Redirect(w, r, rawPath(rel), http.StatusTemporaryRedirect) //nolint:gosec // G710: always under /raw/
 }
 
 func uiHandler(ui fs.FS) http.Handler {
