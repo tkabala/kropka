@@ -35,14 +35,14 @@ test("a tap opens the viewer, close and back return to the folder", async ({ pag
 test("steps through media, then text files, in page order", async ({ page, gallery }) => {
   await gallery.open();
   await page.locator('.tile[data-name="c.png"]').click();
+  // The viewer opens on the hashchange, not the click: wait for each name.
+  await expect(page.locator("#v-name")).toHaveText("c.png");
   await expect(page.locator("#v-prev")).toBeHidden();
 
-  const seen = [];
-  for (let i = 0; i < 5; i++) {
-    seen.push(await page.locator("#v-name").textContent());
-    if (i < 4) await page.locator("#v-next").click();
+  for (const name of ["b.png", "a.png", "notes.md", "fetch.py"]) {
+    await page.locator("#v-next").click();
+    await expect(page.locator("#v-name")).toHaveText(name);
   }
-  expect(seen).toEqual(["c.png", "b.png", "a.png", "notes.md", "fetch.py"]);
   await expect(page.locator("#v-next")).toBeHidden();
   await expect(page).toHaveURL(/\?view=fetch\.py$/);
 
