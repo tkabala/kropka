@@ -47,6 +47,12 @@ $ kropka
 
 ## Install
 
+**Homebrew** (macOS and Linux)
+
+```sh
+brew install tkabala/tap/kropka
+```
+
 **Binary** — grab one for Linux, macOS or Windows from
 [Releases](../../releases), unpack, put `kropka` on your `PATH`.
 
@@ -126,9 +132,10 @@ make snapshot   # all release artifacts via GoReleaser, without publishing
 ```
 
 Releases are cut by pushing a `v*` tag; GitHub Actions runs GoReleaser, which publishes
-binaries and a multi-arch image to GHCR. There is no `CHANGELOG.md`: GoReleaser builds each
-release's notes from the Conventional Commits since the previous tag (leaving out `docs:`,
-`test:` and `chore:`), and they live on the
+binaries, a multi-arch image to GHCR and the Homebrew cask in
+[tkabala/homebrew-tap](https://github.com/tkabala/homebrew-tap). There is no
+`CHANGELOG.md`: GoReleaser builds each release's notes from the Conventional Commits since
+the previous tag (leaving out `docs:`, `test:` and `chore:`), and they live on the
 [Releases page](https://github.com/tkabala/kropka/releases). See
 [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together.
 

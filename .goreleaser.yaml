@@ -43,6 +43,24 @@ dockers_v2:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.description: "Serve . to your phone in one command"
 
+homebrew_casks:
+  - repository:
+      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      name: homebrew-tap
+      # The release job's GITHUB_TOKEN can only write to this repo.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/tkabala/kropka
+    description: "Serve . to your phone in one command"
+    skip_upload: auto
+    hooks:
+      post:
+        # The binary isn't signed or notarized, so without this Gatekeeper
+        # refuses to run it.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/kropka"]
+          end
+
 changelog:
   sort: asc
   filters:
