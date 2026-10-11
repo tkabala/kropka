@@ -11,6 +11,7 @@ The UI's lint and browser tests also need Biome and Node (`mise install` gets al
 ```sh
 make build   # bin/kropka
 make test    # go test -race ./...
+make cover   # same, plus coverage.out and the total
 make vet
 make lint    # golangci-lint and Biome
 make e2e     # Playwright tests of the UI

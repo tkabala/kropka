@@ -23,7 +23,17 @@ jobs:
       - if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
       - run: go vet ./...
-      - run: go test -race ./...
+      - if: runner.os != 'Linux'
+        run: go test -race ./...
+      # Coverage comes from the Linux run only: it's the one with ffmpeg and
+      # every test enabled.
+      - if: runner.os == 'Linux'
+        run: go test -race -coverprofile=coverage.out ./...
+      - if: runner.os == 'Linux'
+        uses: codecov/codecov-action@v7
+        with:
+          files: coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   lint:
     runs-on: ubuntu-latest

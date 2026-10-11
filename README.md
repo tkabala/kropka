@@ -1,6 +1,7 @@
 # kropka
 
 [![ci](https://github.com/tkabala/kropka/actions/workflows/ci.yml/badge.svg)](https://github.com/tkabala/kropka/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/tkabala/kropka/graph/badge.svg)](https://codecov.io/gh/tkabala/kropka)
 [![Release](https://img.shields.io/github/v/release/tkabala/kropka)](https://github.com/tkabala/kropka/releases/latest)
 [![Go Reference](https://pkg.go.dev/badge/github.com/tkabala/kropka.svg)](https://pkg.go.dev/github.com/tkabala/kropka)
 [![License: MIT](https://img.shields.io/github/license/tkabala/kropka)](LICENSE)
@@ -117,6 +118,7 @@ kropka is meant for short-lived, personal sharing.
 ```sh
 make run        # build and serve the current directory
 make test       # go test -race ./...
+make cover      # tests with coverage, prints the total (coverage.out)
 make lint       # golangci-lint, and Biome for the UI
 make e2e        # Playwright tests of the UI in Chromium (needs Node)
 make docker     # local image
