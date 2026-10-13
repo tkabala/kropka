@@ -69,10 +69,18 @@ func TestMiddleware(t *testing.T) {
 	})
 
 	t.Run("redirect stays on this host", func(t *testing.T) {
-		for _, target := range []string{"//evil.com/?t=secret", "///evil.com/x?t=secret"} {
+		// Browsers read "\" as "/" and drop tabs and newlines, so "/\evil.com"
+		// and "/\t/evil.com" would also be scheme-relative.
+		asBrowser := strings.NewReplacer("\\", "/", "\t", "", "\n", "", "\r", "")
+		for _, target := range []string{
+			"//evil.com/?t=secret", "///evil.com/x?t=secret", "/\\evil.com/?t=secret",
+			"/%5Cevil.com/?t=secret", "/%2F%2Fevil.com/?t=secret", "/%2Fevil.com/?t=secret",
+			"/%09/evil.com/?t=secret", "/%0A/evil.com/?t=secret", "/./evil.com/?t=secret",
+		} {
 			rec := serve(httptest.NewRequest("GET", "http://kropka"+target, nil))
-			if loc := rec.Header().Get("Location"); strings.HasPrefix(loc, "//") || !strings.HasPrefix(loc, "/") {
-				t.Errorf("%s: Location %q leaves the host", target, loc)
+			loc := asBrowser.Replace(rec.Header().Get("Location"))
+			if strings.HasPrefix(loc, "//") || !strings.HasPrefix(loc, "/") {
+				t.Errorf("%s: Location %q leaves the host", target, rec.Header().Get("Location"))
 			}
 		}
 	})
