@@ -184,12 +184,17 @@ marked breaking with `!`), and they live on the [Releases page](https://github.c
 
 ## Roadmap
 
-- [x] Thumbnails with an on-disk cache (fast grids for large photos)
-- [x] Live reload: new files appear without refreshing (fsnotify + SSE)
-- [x] Markdown rendering and syntax highlighting
-- [x] Pinch-zoom and pan in the viewer
-- [x] Download a folder as `.zip`
-- [x] Video thumbnails when `ffmpeg` is available
+Planned, roughly in this order; details and discussion are in the issues.
+
+- HTTPS with `--tls-cert` and `--tls-key` ([#2](../../issues/2))
+- Filter the current folder by name ([#3](../../issues/3))
+- More sort orders: oldest and largest first ([#4](../../issues/4))
+- Slideshow in the viewer ([#5](../../issues/5))
+- Keyboard shortcuts help with `?` ([#6](../../issues/6))
+
+All open ideas: [issues labelled `roadmap`](../../issues?q=is%3Aopen+label%3Aroadmap).
+Issues marked [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22)
+are small and self-contained.
 
 ## License
 
