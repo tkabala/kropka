@@ -48,7 +48,7 @@ homebrew_casks:
       owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
       name: homebrew-tap
       # The release job's GITHUB_TOKEN can only write to this repo.
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      token: "{{ .Env.PACKAGE_REPOS_TOKEN }}"
     homepage: https://github.com/tkabala/kropka
     description: "Serve . to your phone in one command"
     skip_upload: auto
@@ -65,8 +65,8 @@ scoops:
   - repository:
       owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
       name: scoop-bucket
-      # Same fine-grained PAT as the tap; it has write access to both repos.
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      # Same fine-grained PAT as the tap.
+      token: "{{ .Env.PACKAGE_REPOS_TOKEN }}"
     homepage: https://github.com/tkabala/kropka
     description: "Serve . to your phone in one command"
     license: MIT

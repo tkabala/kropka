@@ -52,8 +52,9 @@ fixes have been Windows-specific.
 - Conventional Commits with optional scope: `feat:`, `fix(thumb):`, `test(watch):`,
   `docs:`, `ci:`, `chore:`, `style:`.
 - Every error is checked or explicitly discarded (`_ =`); the linters enforce this.
-- Releases: push a `v*` tag; GoReleaser publishes binaries, a multi-arch GHCR image
-  and a Homebrew cask to `tkabala/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret).
+- Releases: push a `v*` tag; GoReleaser publishes binaries, a multi-arch GHCR image,
+  a Homebrew cask to `tkabala/homebrew-tap` and a Scoop manifest to `tkabala/scoop-bucket`
+  (both need the `PACKAGE_REPOS_TOKEN` secret, a fine-grained PAT with write access to them).
   `main.version` is set via `-ldflags`.
 - UI changes come with an e2e test in `e2e/tests/`. Each test gets its own temp folder and
   kropka (`fixtures.js`), so tests may write to it. Biome's formatter is off on purpose.

@@ -139,8 +139,9 @@ make snapshot   # all release artifacts via GoReleaser, without publishing
 ```
 
 Releases are cut by pushing a `v*` tag; GitHub Actions runs GoReleaser, which publishes
-binaries, a multi-arch image to GHCR and the Homebrew cask in
-[tkabala/homebrew-tap](https://github.com/tkabala/homebrew-tap). There is no
+binaries, a multi-arch image to GHCR, the Homebrew cask in
+[tkabala/homebrew-tap](https://github.com/tkabala/homebrew-tap) and the Scoop manifest in
+[tkabala/scoop-bucket](https://github.com/tkabala/scoop-bucket). There is no
 `CHANGELOG.md`: GoReleaser builds each release's notes from the Conventional Commits since
 the previous tag (leaving out `docs:`, `test:` and `chore:`), and they live on the
 [Releases page](https://github.com/tkabala/kropka/releases). See
