@@ -30,7 +30,7 @@ GAP=16           # between and around the two halves
 if [ "${1:-}" != --stitch ]; then # --stitch: only redo the video and GIF
   rm -rf "$OUT"
   mkdir -p "$OUT/bin" "$OUT/cache" "$OUT/home/Pictures"
-  [ -d node_modules ] || npm install --silent
+  [ -d node_modules ] || npm ci --silent
   echo "→ demo folder"
   ./setup.sh "$OUT/space"
   ldflags="-X main.version=$(git -C "$repo" describe --tags --abbrev=0 2>/dev/null || echo dev)"
