@@ -10,6 +10,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -69,7 +70,13 @@ func Middleware(token string, next http.Handler) http.Handler {
 			if strings.HasPrefix(loc, "//") {
 				loc = "/" + strings.TrimLeft(loc, "/")
 			}
-			http.Redirect(w, r, loc, http.StatusSeeOther) //nolint:gosec // G710: same-host path, see above
+			// Then check the result: a target with a host is never followed.
+			// ("\" needs no handling: RequestURI has escaped it as %5C.)
+			target, err := url.Parse(loc)
+			if err != nil || target.Hostname() != "" {
+				target = &url.URL{Path: "/"}
+			}
+			http.Redirect(w, r, target.String(), http.StatusSeeOther) //nolint:gosec // G710: same-host path, see above
 			return
 		}
 		if c, err := r.Cookie(CookieName); err == nil && match(c.Value) {
