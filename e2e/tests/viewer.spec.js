@@ -101,6 +101,20 @@ test("Markdown is rendered, and #anchors scroll", async ({ page, gallery }) => {
   await expect(page).toHaveURL(/\?view=notes\.md$/);
 });
 
+test("Markdown table alignment survives the CSP", async ({ page, gallery }) => {
+  const violations = [];
+  page.on("console", (m) => {
+    if (m.text().includes("Content Security Policy")) violations.push(m.text());
+  });
+  await writeFile(join(gallery.dir, "aligned.md"), "| L | R |\n|:--|--:|\n| left | right |\n");
+  await gallery.open("#/?view=aligned.md");
+  const cells = page.locator("#v-stage .doc .markdown td");
+  await expect(cells.nth(1)).toHaveText("right");
+  await expect(cells.nth(0)).toHaveCSS("text-align", /left$/); // align="left" computes to -webkit-left
+  await expect(cells.nth(1)).toHaveCSS("text-align", /right$/);
+  expect(violations).toEqual([]);
+});
+
 test("code is highlighted", async ({ page, gallery }) => {
   await gallery.open("#/?view=fetch.py");
   const pre = page.locator("#v-stage .doc pre.chroma");

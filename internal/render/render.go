@@ -81,7 +81,12 @@ var formatter = chromahtml.New(chromahtml.WithClasses(true))
 func markdown(rel string, src []byte, l Linker) (string, error) {
 	md := goldmark.New(
 		goldmark.WithExtensions(
-			extension.GFM, // tables, task lists, strikethrough, autolinks
+			// GFM, with column alignment as align attributes: the default
+			// style attributes are inline styles, which the page CSP blocks.
+			extension.NewTable(extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute)),
+			extension.Strikethrough,
+			extension.Linkify,
+			extension.TaskList,
 			highlighting.NewHighlighting(
 				highlighting.WithStyle(Style),
 				highlighting.WithFormatOptions(chromahtml.WithClasses(true)),

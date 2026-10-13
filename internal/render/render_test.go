@@ -47,6 +47,19 @@ func TestMarkdownNoScript(t *testing.T) {
 	}
 }
 
+// The page CSP blocks inline styles, so alignment must not use them.
+func TestMarkdownTableAlignment(t *testing.T) {
+	out := renderMD(t, "x.md", "| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |\n")
+	for _, want := range []string{`<th align="left">a</th>`, `<td align="center">2</td>`, `<td align="right">3</td>`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "style=") {
+		t.Errorf("inline style in:\n%s", out)
+	}
+}
+
 func TestMarkdownLinks(t *testing.T) {
 	src := "[rel](other.md) [up](../top.md) [abs](/notes/a.md) [esc](my%20file.txt) " +
 		"[away](../../../etc/passwd) [ext](https://example.com) [mail](mailto:a@b.c) [anchor](#install)\n\n" +
