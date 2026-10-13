@@ -166,6 +166,7 @@ cosign verify ghcr.io/tkabala/kropka:0.1.3 \
 make run        # build and serve the current directory
 make test       # go test -race ./...
 make cover      # tests with coverage, prints the total (coverage.out)
+make fuzz       # fuzz the path, EXIF and Markdown/HTML code, FUZZTIME=1m each
 make lint       # golangci-lint, and Biome for the UI
 make e2e        # Playwright tests of the UI in Chromium (needs Node)
 make docker     # local image

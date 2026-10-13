@@ -18,6 +18,7 @@ make build      # CGO_ENABLED=0 build into bin/kropka, version from git describe
 make run        # build and serve the current directory
 make test       # go test -race ./...
 make cover      # tests with a coverage profile in coverage.out, prints the total
+make fuzz       # go test -fuzz on each Fuzz* target for FUZZTIME (default 1m)
 make vet        # go vet ./...
 make lint       # golangci-lint run (v2, with revive enabled), then biome lint for the UI
 make e2e        # Playwright tests of the UI against the real binary (e2e/)

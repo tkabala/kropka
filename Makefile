@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build run test cover vet lint e2e docker snapshot demo clean
+.PHONY: build run test cover fuzz vet lint e2e docker snapshot demo clean
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/kropka ./cmd/kropka
@@ -15,6 +15,17 @@ test:
 cover:
 	go test -race -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -n 1
+
+# Coverage-guided fuzzing of the code that parses untrusted input, each target
+# for FUZZTIME (go test -fuzz runs one target at a time). A failing input is
+# saved under the package's testdata/fuzz and then runs with the normal tests.
+FUZZTIME ?= 1m
+FUZZ := FuzzClean:./internal/fsview FuzzExifOrientation:./internal/thumb FuzzRender:./internal/render
+
+fuzz:
+	@set -e; for t in $(FUZZ); do \
+		go test -run '^$$' -fuzz "^$${t%%:*}$$" -fuzztime $(FUZZTIME) "$${t#*:}"; \
+	done
 
 vet:
 	go vet ./...

@@ -93,6 +93,25 @@ jobs:
             e2e/test-results
           retention-days: 14
 
+  # A short fuzzing run on every push; the seed corpora also run with the
+  # normal tests. A failing input is uploaded so it can be added to testdata.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - run: make fuzz FUZZTIME=30s
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-failures
+          path: internal/*/testdata/fuzz
+          retention-days: 14
+
   vulncheck:
     runs-on: ubuntu-latest
     steps:
