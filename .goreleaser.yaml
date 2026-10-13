@@ -61,6 +61,17 @@ homebrew_casks:
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/kropka"]
           end
 
+scoops:
+  - repository:
+      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      name: scoop-bucket
+      # Same fine-grained PAT as the tap; it has write access to both repos.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/tkabala/kropka
+    description: "Serve . to your phone in one command"
+    license: MIT
+    skip_upload: auto
+
 changelog:
   sort: asc
   filters:

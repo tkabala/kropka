@@ -53,6 +53,13 @@ $ kropka
 brew install tkabala/tap/kropka
 ```
 
+**Scoop** (Windows)
+
+```powershell
+scoop bucket add tkabala https://github.com/tkabala/scoop-bucket
+scoop install kropka
+```
+
 **Binary** — grab one for Linux, macOS or Windows from
 [Releases](../../releases), unpack, put `kropka` on your `PATH`.
 
