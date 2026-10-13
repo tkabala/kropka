@@ -55,7 +55,9 @@ fixes have been Windows-specific.
 - Releases: push a `v*` tag; GoReleaser publishes binaries, a multi-arch GHCR image,
   a Homebrew cask to `tkabala/homebrew-tap` and a Scoop manifest to `tkabala/scoop-bucket`
   (both need the `PACKAGE_REPOS_TOKEN` secret, a fine-grained PAT with write access to them).
-  `main.version` is set via `-ldflags`.
+  Archives get syft SBOMs; checksums and the image are signed keylessly with cosign and
+  get `actions/attest` provenance (README "Verifying a release"). `main.version` is set via
+  `-ldflags`.
 - UI changes come with an e2e test in `e2e/tests/`. Each test gets its own temp folder and
   kropka (`fixtures.js`), so tests may write to it. Biome's formatter is off on purpose.
 - `docs/demo/` is the scripted README demo recording (Playwright + VHS); it is separate

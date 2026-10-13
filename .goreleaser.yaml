@@ -30,6 +30,22 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# One SPDX SBOM per archive, made by syft.
+sboms:
+  - artifacts: archive
+
+# Keyless: cosign gets a short-lived certificate for the release workflow's
+# OIDC identity from Sigstore, so there is no key to keep. Signing the
+# checksums covers every archive and SBOM listed in them.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args: ["sign-blob", "--bundle=${signature}", "${artifact}", "--yes"]
+    artifacts: checksum
+
+docker_signs:
+  - args: ["sign", "${artifact}@${digest}", "--yes"]
+
 dockers_v2:
   - images:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/kropka"

@@ -7,3 +7,5 @@ Please **do not** open a public issue for vulnerabilities. Report them privately
 You should get a reply within a week.
 
 The README's "Security model" section describes what kropka is designed to protect against.
+
+Releases are signed and carry build provenance; see "Verifying a release" in the README.

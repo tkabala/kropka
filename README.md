@@ -126,6 +126,39 @@ kropka is meant for short-lived, personal sharing.
   outside the served folder.
 - Traffic is plain HTTP. Over untrusted networks, use an SSH tunnel or a VPN.
 
+### Verifying a release
+
+From v0.1.3, releases are signed keylessly with [Sigstore](https://www.sigstore.dev/)
+and come with SLSA build provenance and an SPDX SBOM per archive. Either check proves a
+file was built by this repo's release workflow from the tagged commit and not changed
+since; it says nothing about whether the code itself is safe.
+
+With the [GitHub CLI](https://cli.github.com/):
+
+```sh
+gh attestation verify kropka_0.1.3_linux_amd64.tar.gz --repo tkabala/kropka
+gh attestation verify oci://ghcr.io/tkabala/kropka:0.1.3 --repo tkabala/kropka
+```
+
+With [cosign](https://docs.sigstore.dev/cosign/system_config/installation/), check the
+signed `checksums.txt`, then the archives against it:
+
+```sh
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity https://github.com/tkabala/kropka/.github/workflows/release.yml@refs/tags/v0.1.3 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --check --ignore-missing checksums.txt
+```
+
+The image is signed too:
+
+```sh
+cosign verify ghcr.io/tkabala/kropka:0.1.3 \
+  --certificate-identity https://github.com/tkabala/kropka/.github/workflows/release.yml@refs/tags/v0.1.3 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## Development
 
 ```sh
