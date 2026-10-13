@@ -2,6 +2,7 @@
 
 [![ci](https://github.com/tkabala/kropka/actions/workflows/ci.yml/badge.svg)](https://github.com/tkabala/kropka/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/tkabala/kropka/graph/badge.svg)](https://codecov.io/gh/tkabala/kropka)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/tkabala/kropka/badge)](https://scorecard.dev/viewer/?uri=github.com/tkabala/kropka)
 [![Release](https://img.shields.io/github/v/release/tkabala/kropka)](https://github.com/tkabala/kropka/releases/latest)
 [![Go Reference](https://pkg.go.dev/badge/github.com/tkabala/kropka.svg)](https://pkg.go.dev/github.com/tkabala/kropka)
 [![License: MIT](https://img.shields.io/github/license/tkabala/kropka)](LICENSE)
