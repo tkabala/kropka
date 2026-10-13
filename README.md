@@ -178,8 +178,8 @@ binaries, a multi-arch image to GHCR, the Homebrew cask in
 [tkabala/homebrew-tap](https://github.com/tkabala/homebrew-tap) and the Scoop manifest in
 [tkabala/scoop-bucket](https://github.com/tkabala/scoop-bucket). There is no
 `CHANGELOG.md`: GoReleaser builds each release's notes from the Conventional Commits since
-the previous tag (leaving out `docs:`, `test:` and `chore:`), and they live on the
-[Releases page](https://github.com/tkabala/kropka/releases). See
+the previous tag (leaving out `docs`, `test` and `chore` commits, scoped or not, unless
+marked breaking with `!`), and they live on the [Releases page](https://github.com/tkabala/kropka/releases). See
 [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together.
 
 ## Roadmap

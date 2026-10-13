@@ -91,4 +91,5 @@ scoops:
 changelog:
   sort: asc
   filters:
-    exclude: ["^docs:", "^test:", "^chore:"]
+    # Any case, scoped or not; a breaking change ("chore!:") still shows.
+    exclude: ['(?i)^(docs|test|chore)(\([^)]*\))?:']
