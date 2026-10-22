@@ -2,28 +2,37 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tkabala/kropka/internal/fsview"
 )
 
 func TestMakeURL(t *testing.T) {
 	for _, tc := range []struct {
-		host, token, want string
-		port              int
+		scheme, host, token, want string
+		port                      int
 	}{
-		{"localhost", "abc", "http://localhost:8080/?t=abc", 8080},
-		{"localhost", "", "http://localhost:8080/", 8080},
-		{"192.168.1.5", "x-y_z", "http://192.168.1.5:9000/?t=x-y_z", 9000},
-		{"::1", "abc", "http://[::1]:8080/?t=abc", 8080},
+		{"http", "localhost", "abc", "http://localhost:8080/?t=abc", 8080},
+		{"http", "localhost", "", "http://localhost:8080/", 8080},
+		{"http", "192.168.1.5", "x-y_z", "http://192.168.1.5:9000/?t=x-y_z", 9000},
+		{"http", "::1", "abc", "http://[::1]:8080/?t=abc", 8080},
+		{"https", "localhost", "abc", "https://localhost:8443/?t=abc", 8443},
 	} {
-		if got := makeURL(tc.host, tc.port, tc.token); got != tc.want {
-			t.Errorf("makeURL(%q, %d, %q) = %q; want %q", tc.host, tc.port, tc.token, got, tc.want)
+		if got := makeURL(tc.scheme, tc.host, tc.port, tc.token); got != tc.want {
+			t.Errorf("makeURL(%q, %q, %d, %q) = %q; want %q", tc.scheme, tc.host, tc.port, tc.token, got, tc.want)
 		}
 	}
 }
@@ -59,7 +68,7 @@ func TestEnvInt(t *testing.T) {
 
 func TestBanner(t *testing.T) {
 	t.Run("localhost", func(t *testing.T) {
-		b := banner("/srv/pics", "127.0.0.1", 8080, "tok", false)
+		b := banner("/srv/pics", "127.0.0.1", 8080, "tok", false, nil)
 		for _, want := range []string{"serving /srv/pics", "→ http://localhost:8080/?t=tok", "ssh -L 8080:localhost:8080", "Ctrl+C"} {
 			if !strings.Contains(b, want) {
 				t.Errorf("missing %q in:\n%s", want, b)
@@ -72,7 +81,7 @@ func TestBanner(t *testing.T) {
 		}
 	})
 	t.Run("no auth", func(t *testing.T) {
-		b := banner("/srv", "127.0.0.1", 8080, "", false)
+		b := banner("/srv", "127.0.0.1", 8080, "", false, nil)
 		if !strings.Contains(b, "access token disabled") {
 			t.Errorf("no warning in:\n%s", b)
 		}
@@ -81,18 +90,18 @@ func TestBanner(t *testing.T) {
 		}
 	})
 	t.Run("custom bind", func(t *testing.T) {
-		b := banner("/srv", "10.0.0.2", 8081, "tok", false)
+		b := banner("/srv", "10.0.0.2", 8081, "tok", false, nil)
 		if !strings.Contains(b, "http://10.0.0.2:8081/?t=tok") || strings.Contains(b, "ssh -L") {
 			t.Errorf("banner:\n%s", b)
 		}
 	})
 	t.Run("lan with QR", func(t *testing.T) {
-		b := banner("/srv", "0.0.0.0", 8080, "tok", true)
+		b := banner("/srv", "0.0.0.0", 8080, "tok", true, nil)
 		if !strings.Contains(b, "http://localhost:8080/?t=tok") {
 			t.Errorf("no localhost URL in:\n%s", b)
 		}
 		for _, ip := range lanIPs() {
-			if !strings.Contains(b, makeURL(ip, 8080, "tok")) {
+			if !strings.Contains(b, makeURL("http", ip, 8080, "tok")) {
 				t.Errorf("no URL for %s in:\n%s", ip, b)
 			}
 		}
@@ -103,6 +112,103 @@ func TestBanner(t *testing.T) {
 			t.Errorf("ssh hint with --lan:\n%s", b)
 		}
 	})
+	t.Run("tls", func(t *testing.T) {
+		cert := loadTestCert(t, "localhost", "127.0.0.1")
+		b := banner("/srv", "127.0.0.1", 8443, "tok", false, cert)
+		if !strings.Contains(b, "→ https://localhost:8443/?t=tok") {
+			t.Errorf("no https URL in:\n%s", b)
+		}
+		if strings.Contains(b, "not valid for") {
+			t.Errorf("warning for a covered host:\n%s", b)
+		}
+	})
+	t.Run("tls wrong host", func(t *testing.T) {
+		cert := loadTestCert(t, "photos.example")
+		b := banner("/srv", "10.0.0.2", 8443, "tok", false, cert)
+		if !strings.Contains(b, "certificate is not valid for 10.0.0.2") {
+			t.Errorf("no warning in:\n%s", b)
+		}
+	})
+}
+
+func TestLoadCert(t *testing.T) {
+	certFile, keyFile := writeTestCert(t, "localhost")
+	_, otherKey := writeTestCert(t, "localhost")
+
+	if c, err := loadCert("", ""); c != nil || err != nil {
+		t.Errorf("neither: %v, %v", c, err)
+	}
+	c, err := loadCert(certFile, keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Leaf == nil || c.Leaf.VerifyHostname("localhost") != nil {
+		t.Errorf("leaf not parsed: %+v", c.Leaf)
+	}
+	for name, files := range map[string][2]string{
+		"cert only":    {certFile, ""},
+		"key only":     {"", keyFile},
+		"missing file": {filepath.Join(t.TempDir(), "nope.pem"), keyFile},
+		"wrong key":    {certFile, otherKey},
+	} {
+		if _, err := loadCert(files[0], files[1]); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
+// writeTestCert writes a self-signed certificate for hosts (names or IPs) and
+// its key as PEM files, and returns their paths.
+func writeTestCert(t *testing.T, hosts ...string) (certFile, keyFile string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: hosts[0]},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IsCA:         true,
+
+		BasicConstraintsValid: true,
+	}
+	for _, h := range hosts {
+		if ip := net.ParseIP(h); ip != nil {
+			tmpl.IPAddresses = append(tmpl.IPAddresses, ip)
+		} else {
+			tmpl.DNSNames = append(tmpl.DNSNames, h)
+		}
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	certFile, keyFile = filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return certFile, keyFile
+}
+
+func loadTestCert(t *testing.T, hosts ...string) *x509.Certificate {
+	t.Helper()
+	c, err := loadCert(writeTestCert(t, hosts...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.Leaf
 }
 
 func TestLanIPs(t *testing.T) {
@@ -198,6 +304,7 @@ func TestRunExitsEarly(t *testing.T) {
 		{"bad flag", []string{"--nope"}, true, "", "flag provided but not defined"},
 		{"two dirs", []string{"a", "b"}, true, "", ""},
 		{"missing dir", []string{filepath.Join(t.TempDir(), "nope")}, true, "", ""},
+		{"tls cert without key", []string{"--tls-cert", "cert.pem", t.TempDir()}, true, "", ""},
 		{"bad port", []string{"--bind", "256.0.0.1", "--cache-dir", t.TempDir(), t.TempDir()}, true, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

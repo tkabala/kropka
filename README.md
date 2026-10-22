@@ -98,6 +98,8 @@ kropka [flags] [dir]
   --cache-dir  where to keep thumbnails                     (user cache dir, env KROPKA_CACHE_DIR)
   --no-thumbs  show original images in the grid
   --ffmpeg     ffmpeg for video thumbnails, or "off"       (ffmpeg on PATH, env KROPKA_FFMPEG)
+  --tls-cert   serve HTTPS with this PEM certificate       (env KROPKA_TLS_CERT)
+  --tls-key    the PEM private key for --tls-cert          (env KROPKA_TLS_KEY)
   --version    print version
 ```
 
@@ -108,6 +110,25 @@ kropka [flags] [dir]
 | Your laptop, phone on the same Wi‑Fi | `kropka --lan`, scan the QR code |
 | A remote server, viewing on your laptop | `kropka` on the server, `ssh -L 8080:localhost:8080 server` locally |
 | A remote server, viewing on your phone | `kropka --lan` on a server you can reach (VPN, [Tailscale](https://tailscale.com)), scan the QR code |
+| Shared or public Wi‑Fi | `kropka --lan` with `--tls-cert` and `--tls-key`, see below |
+
+### HTTPS
+
+With `--tls-cert` and `--tls-key` kropka serves HTTPS, so others on the network can't read
+the files or the token. The phone has to trust the certificate; a self-signed one gets a
+full-page warning. [mkcert](https://github.com/FiloSottile/mkcert) makes one that works:
+
+```sh
+mkcert -install                                   # create a local CA
+mkcert localhost 192.168.1.5                      # your machine's LAN address(es)
+kropka --lan --tls-cert localhost+1.pem --tls-key localhost+1-key.pem
+```
+
+Then install the CA on the phone once: `mkcert -CAROOT` shows where `rootCA.pem` is. On
+iOS, open it, install the profile, then turn it on under Settings → General → About →
+Certificate Trust Settings. On Android, install it under Settings → Security → Encryption &
+credentials → Install a certificate → CA certificate. The banner warns when the
+certificate doesn't cover the address in the QR code.
 
 ## Security model
 
@@ -125,7 +146,9 @@ kropka is meant for short-lived, personal sharing.
   without `javascript:` links.
 - There is no upload, rename or delete. The only thing kropka writes is its thumbnail cache,
   outside the served folder.
-- Traffic is plain HTTP. Over untrusted networks, use an SSH tunnel or a VPN.
+- Traffic is plain HTTP unless you pass `--tls-cert` and `--tls-key` ([HTTPS](#https)).
+  The token cookie gets `Secure` over HTTPS. Over untrusted networks, use HTTPS, an SSH
+  tunnel or a VPN.
 
 ### Verifying a release
 
@@ -186,7 +209,6 @@ marked breaking with `!`), and they live on the [Releases page](https://github.c
 
 Planned, roughly in this order; details and discussion are in the issues.
 
-- HTTPS with `--tls-cert` and `--tls-key` ([#2](../../issues/2))
 - Filter the current folder by name ([#3](../../issues/3))
 - More sort orders: oldest and largest first ([#4](../../issues/4))
 - Slideshow in the viewer ([#5](../../issues/5))

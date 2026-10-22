@@ -28,7 +28,7 @@ logRequests → securityHeaders → auth.Middleware → ServeMux
 
 | Package | Responsibility |
 |---|---|
-| `cmd/kropka` | Flags and env vars, picking a free port, startup banner and QR code, graceful shutdown |
+| `cmd/kropka` | Flags and env vars, picking a free port, loading the TLS certificate, startup banner and QR code, graceful shutdown |
 | `internal/fsview` | Read-only, traversal-safe access to the directory; listing; MIME and kind detection |
 | `internal/auth` | Random token, token-to-cookie exchange, request guard |
 | `internal/thumb` | Thumbnail generation, on-disk cache, EXIF orientation |
@@ -57,6 +57,14 @@ in a sandbox.
 **Localhost by default.** The common case is a remote server reached over SSH, where
 `127.0.0.1` plus `ssh -L` is both the simplest and the safest option. `--lan` is an explicit
 opt-in and prints a QR code.
+
+**HTTPS only with a certificate you bring.** `--tls-cert` and `--tls-key` are loaded at
+startup, so a bad file fails before anything is served, and `ServeTLS` on the same listener
+keeps the free-port search and shutdown unchanged. kropka doesn't generate a self-signed
+certificate: phones show a full-page warning for one, which is worse than plain HTTP on a
+trusted network. The README points to mkcert instead. No HSTS either: it would stick to
+`localhost` and break other dev servers there. The banner warns when the certificate doesn't
+name the host in the QR code, because the phone's error page doesn't say why.
 
 **Hash routing.** `#/folder?view=file` keeps the server trivial (no SPA fallback) and makes
 the phone's back button close the viewer and walk up folders naturally.
@@ -106,8 +114,8 @@ bare `change` event; the client then fetches `/api/ls` as usual, so there is one
 listings and nothing to keep in sync. Events are coalesced: a notification goes out 300 ms
 after the folder goes quiet, or 2 s after the first event if it never does. Attribute-only
 changes and hidden files are ignored. The stream is closed while the tab is hidden, because
-browsers allow only six HTTP/1.1 connections per server and a phone shouldn't hold one in the
-background; on return the page reconnects and refreshes once. If watching is unavailable
+over plain HTTP browsers allow only six HTTP/1.1 connections per server (HTTPS gets HTTP/2,
+which has no such limit) and a phone shouldn't hold one in the background; on return the page reconnects and refreshes once. If watching is unavailable
 (no inotify watches left, an unsupported platform), the server answers `204`, which makes
 `EventSource` stop for good, and the page works as before. On shutdown the watcher is closed
 first, which ends every stream, so `Shutdown` doesn't wait for connections that never go idle.

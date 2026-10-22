@@ -6,6 +6,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -48,6 +50,8 @@ type options struct {
 	noThumbs bool
 	cacheDir string
 	ffmpeg   string
+	tlsCert  string
+	tlsKey   string
 }
 
 func main() {
@@ -73,6 +77,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&o.noThumbs, "no-thumbs", false, "show original images in the grid instead of generating thumbnails")
 	fs.StringVar(&o.cacheDir, "cache-dir", os.Getenv("KROPKA_CACHE_DIR"), "where to keep thumbnails (default: the user cache dir)")
 	fs.StringVar(&o.ffmpeg, "ffmpeg", os.Getenv("KROPKA_FFMPEG"), `ffmpeg for video thumbnails, or "off" (default: ffmpeg on PATH, if any)`)
+	fs.StringVar(&o.tlsCert, "tls-cert", os.Getenv("KROPKA_TLS_CERT"), "serve HTTPS with this PEM certificate (needs --tls-key)")
+	fs.StringVar(&o.tlsKey, "tls-key", os.Getenv("KROPKA_TLS_KEY"), "the PEM private key for --tls-cert")
 	fs.BoolVar(&o.version, "version", false, "print version and exit")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "kropka %s — serve . to your phone\n\nUsage: kropka [flags] [dir]\n\nFlags:\n", version)
@@ -96,6 +102,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		dir = fs.Arg(0)
 	default:
 		return errors.New("expected at most one directory")
+	}
+
+	cert, err := loadCert(o.tlsCert, o.tlsKey)
+	if err != nil {
+		return err
 	}
 
 	root, err := fsview.Open(dir, o.hidden)
@@ -165,18 +176,30 @@ func run(args []string, stdout, stderr io.Writer) error {
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	var leaf *x509.Certificate
+	if cert != nil {
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*cert}, MinVersion: tls.VersionTLS12}
+		leaf = cert.Leaf
+	}
 	if watcher != nil {
 		// Event streams never go idle on their own; closing the watcher ends
 		// them so Shutdown doesn't wait out its timeout.
 		srv.RegisterOnShutdown(func() { _ = watcher.Close() })
 	}
 
-	_, _ = io.WriteString(stdout, banner(root.Dir(), bind, port, token, o.lan || o.qr))
+	_, _ = io.WriteString(stdout, banner(root.Dir(), bind, port, token, o.lan || o.qr, leaf))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	errc := make(chan error, 1)
-	go func() { errc <- srv.Serve(ln) }()
+	go func() {
+		if cert != nil {
+			// ServeTLS uses TLSConfig and also turns on HTTP/2.
+			errc <- srv.ServeTLS(ln, "", "")
+			return
+		}
+		errc <- srv.Serve(ln)
+	}()
 
 	select {
 	case err := <-errc:
@@ -218,6 +241,22 @@ func findFFmpeg(flag string) (string, error) {
 	return exec.LookPath(flag)
 }
 
+// loadCert loads --tls-cert and --tls-key, which go together. With neither it
+// returns nil: kropka serves plain HTTP.
+func loadCert(certFile, keyFile string) (*tls.Certificate, error) {
+	if certFile == "" && keyFile == "" {
+		return nil, nil
+	}
+	if certFile == "" || keyFile == "" {
+		return nil, errors.New("--tls-cert and --tls-key go together")
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile) // also parses cert.Leaf
+	if err != nil {
+		return nil, fmt.Errorf("loading the TLS certificate: %w", err)
+	}
+	return &cert, nil
+}
+
 // listen binds to port, or the next free one (up to 20 tries) if it is taken.
 func listen(bind string, port int) (net.Listener, int, error) {
 	var lastErr error
@@ -234,25 +273,35 @@ func listen(bind string, port int) (net.Listener, int, error) {
 	return nil, 0, lastErr
 }
 
-func banner(dir, bind string, port int, token string, showQR bool) string {
+// banner is the startup message. cert is the TLS certificate, or nil for
+// plain HTTP.
+func banner(dir, bind string, port int, token string, showQR bool, cert *x509.Certificate) string {
 	var w strings.Builder
 	fmt.Fprintf(&w, "\n  ● kropka %s\n  serving %s\n\n", version, dir)
 
-	urls := []string{}
+	hosts := []string{}
 	if bind == "0.0.0.0" || bind == "::" {
-		urls = append(urls, makeURL("localhost", port, token))
-		for _, ip := range lanIPs() {
-			urls = append(urls, makeURL(ip, port, token))
-		}
+		hosts = append(append(hosts, "localhost"), lanIPs()...)
 	} else {
 		host := bind
 		if host == "127.0.0.1" {
 			host = "localhost"
 		}
-		urls = append(urls, makeURL(host, port, token))
+		hosts = append(hosts, host)
 	}
-	for _, u := range urls {
-		fmt.Fprintf(&w, "  → %s\n", u)
+	scheme := "http"
+	if cert != nil {
+		scheme = "https"
+	}
+	urls := make([]string, len(hosts))
+	for i, h := range hosts {
+		urls[i] = makeURL(scheme, h, port, token)
+		fmt.Fprintf(&w, "  → %s\n", urls[i])
+	}
+	// The last address is the one in the QR code; a certificate that doesn't
+	// name it gets a full-page warning on the phone, which is hard to debug there.
+	if target := hosts[len(hosts)-1]; cert != nil && cert.VerifyHostname(target) != nil {
+		fmt.Fprintf(&w, "\n  ! the certificate is not valid for %s: browsers will reject it\n", target)
 	}
 
 	if bind == "127.0.0.1" {
@@ -273,8 +322,8 @@ func banner(dir, bind string, port int, token string, showQR bool) string {
 	return w.String()
 }
 
-func makeURL(host string, port int, token string) string {
-	u := url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: "/"}
+func makeURL(scheme, host string, port int, token string) string {
+	u := url.URL{Scheme: scheme, Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: "/"}
 	if token != "" {
 		u.RawQuery = auth.QueryParam + "=" + token
 	}
