@@ -131,6 +131,35 @@ func TestBanner(t *testing.T) {
 	})
 }
 
+func TestPickQRHost(t *testing.T) {
+	lan := []string{"localhost", "192.168.1.5", "172.19.0.1"}
+	for name, tc := range map[string]struct {
+		hosts     []string
+		certHosts []string // nil for plain HTTP
+		want      string
+		covered   bool
+	}{
+		"no tls":               {lan, nil, "172.19.0.1", true},
+		"no tls, localhost":    {[]string{"localhost"}, nil, "localhost", true},
+		"cert names lan ip":    {lan, []string{"localhost", "192.168.1.5"}, "192.168.1.5", true},
+		"cert names both":      {lan, []string{"192.168.1.5", "172.19.0.1"}, "172.19.0.1", true},
+		"cert names localhost": {lan, []string{"localhost"}, "172.19.0.1", false},
+		"cert names none":      {lan, []string{"photos.example"}, "172.19.0.1", false},
+		"localhost only":       {[]string{"localhost"}, []string{"localhost"}, "localhost", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var cert *x509.Certificate
+			if tc.certHosts != nil {
+				cert = loadTestCert(t, tc.certHosts...)
+			}
+			host, covered := pickQRHost(tc.hosts, cert)
+			if host != tc.want || covered != tc.covered {
+				t.Errorf("pickQRHost = %q, %v; want %q, %v", host, covered, tc.want, tc.covered)
+			}
+		})
+	}
+}
+
 func TestLoadCert(t *testing.T) {
 	certFile, keyFile := writeTestCert(t, "localhost")
 	_, otherKey := writeTestCert(t, "localhost")

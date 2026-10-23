@@ -293,15 +293,14 @@ func banner(dir, bind string, port int, token string, showQR bool, cert *x509.Ce
 	if cert != nil {
 		scheme = "https"
 	}
-	urls := make([]string, len(hosts))
-	for i, h := range hosts {
-		urls[i] = makeURL(scheme, h, port, token)
-		fmt.Fprintf(&w, "  → %s\n", urls[i])
+	for _, h := range hosts {
+		fmt.Fprintf(&w, "  → %s\n", makeURL(scheme, h, port, token))
 	}
-	// The last address is the one in the QR code; a certificate that doesn't
-	// name it gets a full-page warning on the phone, which is hard to debug there.
-	if target := hosts[len(hosts)-1]; cert != nil && cert.VerifyHostname(target) != nil {
-		fmt.Fprintf(&w, "\n  ! the certificate is not valid for %s: browsers will reject it\n", target)
+	// A certificate that doesn't name the QR code's address gets a full-page
+	// warning on the phone, which is hard to debug there.
+	qrHost, covered := pickQRHost(hosts, cert)
+	if !covered {
+		fmt.Fprintf(&w, "\n  ! the certificate is not valid for %s: browsers will reject it\n", strings.Join(qrCandidates(hosts), ", "))
 	}
 
 	if bind == "127.0.0.1" {
@@ -312,7 +311,7 @@ func banner(dir, bind string, port int, token string, showQR bool, cert *x509.Ce
 	}
 
 	if showQR {
-		target := urls[len(urls)-1] // a LAN address if there is one
+		target := makeURL(scheme, qrHost, port, token)
 		if q, err := qrcode.New(target, qrcode.Low); err == nil {
 			fmt.Fprintf(&w, "\n%s  %s\n", indent(q.ToSmallString(false), "  "), target)
 		}
@@ -320,6 +319,32 @@ func banner(dir, bind string, port int, token string, showQR bool, cert *x509.Ce
 	fmt.Fprintln(&w, "\n  Ctrl+C to stop")
 	fmt.Fprintln(&w)
 	return w.String()
+}
+
+// qrCandidates are the addresses the QR code may show: the LAN ones if there
+// are any, since localhost on a phone is the phone itself.
+func qrCandidates(hosts []string) []string {
+	if len(hosts) > 1 && hosts[0] == "localhost" {
+		return hosts[1:]
+	}
+	return hosts
+}
+
+// pickQRHost returns the address for the QR code: the last candidate, or with
+// a certificate the last one it covers. lanIPs often ends with a container
+// bridge the phone can't reach, while the certificate names the real address.
+// covered is false when a certificate covers none of the candidates.
+func pickQRHost(hosts []string, cert *x509.Certificate) (host string, covered bool) {
+	cands := qrCandidates(hosts)
+	if cert == nil {
+		return cands[len(cands)-1], true
+	}
+	for i := len(cands) - 1; i >= 0; i-- {
+		if cert.VerifyHostname(cands[i]) == nil {
+			return cands[i], true
+		}
+	}
+	return cands[len(cands)-1], false
 }
 
 func makeURL(scheme, host string, port int, token string) string {

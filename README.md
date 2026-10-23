@@ -127,8 +127,8 @@ kropka --lan --tls-cert localhost+1.pem --tls-key localhost+1-key.pem
 Then install the CA on the phone once: `mkcert -CAROOT` shows where `rootCA.pem` is. On
 iOS, open it, install the profile, then turn it on under Settings → General → About →
 Certificate Trust Settings. On Android, install it under Settings → Security → Encryption &
-credentials → Install a certificate → CA certificate. The banner warns when the
-certificate doesn't cover the address in the QR code.
+credentials → Install a certificate → CA certificate. The QR code uses an address the
+certificate covers, and the banner warns when it covers none of your LAN addresses.
 
 ## Security model
 

@@ -63,8 +63,10 @@ startup, so a bad file fails before anything is served, and `ServeTLS` on the sa
 keeps the free-port search and shutdown unchanged. kropka doesn't generate a self-signed
 certificate: phones show a full-page warning for one, which is worse than plain HTTP on a
 trusted network. The README points to mkcert instead. No HSTS either: it would stick to
-`localhost` and break other dev servers there. The banner warns when the certificate doesn't
-name the host in the QR code, because the phone's error page doesn't say why.
+`localhost` and break other dev servers there. The QR code shows the last LAN address the
+certificate names: `lanIPs()` often ends with a container bridge the phone can't reach, while
+the certificate names the real address. When it names none of them the banner warns, because
+the phone's error page doesn't say why.
 
 **Hash routing.** `#/folder?view=file` keeps the server trivial (no SPA fallback) and makes
 the phone's back button close the viewer and walk up folders naturally.
