@@ -13,6 +13,9 @@
   <header class="bar">
     <a class="logo" href="#/" aria-label="Root folder"><span class="dot"></span></a>
     <nav class="crumbs" id="crumbs" aria-label="Folder path"></nav>
+    <button class="icon-btn" id="filter-btn" type="button" aria-label="Filter by name" title="Filter by name (/)" aria-controls="filter-bar" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zm9 2-4.2-4.2"/></svg>
+    </button>
     <button class="icon-btn" id="sort" type="button" aria-label="Change sort order"></button>
     <button class="icon-btn" id="zip" type="button" aria-label="Download folder as zip" title="Download folder as zip">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6m-3-3 3 3 3-3"/></svg>
@@ -21,6 +24,9 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
     </button>
   </header>
+  <div class="filter-bar" id="filter-bar" hidden>
+    <input id="filter" type="search" placeholder="Filter by name" aria-label="Filter by name" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  </div>
 
   <main id="main">
     <p class="status" id="status">Loading…</p>
