@@ -209,7 +209,6 @@ marked breaking with `!`), and they live on the [Releases page](https://github.c
 
 Planned, roughly in this order; details and discussion are in the issues.
 
-- Filter the current folder by name ([#3](../../issues/3))
 - More sort orders: oldest and largest first ([#4](../../issues/4))
 - Slideshow in the viewer ([#5](../../issues/5))
 - Keyboard shortcuts help with `?` ([#6](../../issues/6))

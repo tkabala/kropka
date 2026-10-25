@@ -21,6 +21,7 @@ const state = {
   entries: [],
   viewable: [], // entries the viewer can step through, in display order
   sort: load("sort", "newest"),
+  filter: "", // lower-cased name filter, "" for none
   index: -1,
   videoThumbs: false, // the server can make video thumbnails (ffmpeg)
   loadedPath: null,
@@ -115,6 +116,7 @@ async function route() {
   const { path, view } = parseHash();
   if (path !== state.loadedPath) {
     closeViewer(true);
+    closeFilter();
     watch(path); // before listing, so nothing changes unseen in between
     await loadDir(path);
   }
@@ -297,25 +299,27 @@ function renderSortButton() {
   $("sort").textContent = SORTS[state.sort].label;
 }
 
+// Every rendered entry with its element, in page order, for the filter.
+let listed = [];
+
 function renderList() {
   const cmp = SORTS[state.sort].cmp;
   const dirs = state.entries.filter((e) => e.kind === "dir").sort(cmp);
   const media = state.entries.filter((e) => e.kind === "image" || e.kind === "video").sort(cmp);
   const others = state.entries.filter((e) => e.kind !== "dir" && e.kind !== "image" && e.kind !== "video").sort(cmp);
+  listed = [];
+  const track = (entry, node) => {
+    listed.push({ entry, node });
+    return node;
+  };
 
-  // The viewer walks media first, then inline-viewable files, matching the page order.
-  state.viewable = [...media, ...others.filter((e) => e.kind === "text" || e.kind === "audio")];
-
-  const folders = $("folders");
-  folders.replaceChildren(...dirs.map((d) => {
+  $("folders").replaceChildren(...dirs.map((d) => {
     const a = el("a", { class: "folder", href: hashFor(join(state.path, d.name)) }, ICONS.folder);
     a.append(el("span", { text: d.name }));
-    return a;
+    return track(d, a);
   }));
-  folders.hidden = dirs.length === 0;
 
-  const grid = $("grid");
-  grid.replaceChildren(...media.map((m) => {
+  $("grid").replaceChildren(...media.map((m) => {
     const b = el("button", { class: "tile", type: "button", "data-name": m.name, "aria-label": m.name, title: m.name });
     const src = rawURL(state.path, m.name);
     if (m.kind === "image") {
@@ -331,13 +335,11 @@ function renderList() {
     } else {
       b.append(posterVideo(src), el("span", { class: "tile-badge" }, ICONS.play));
     }
-    return b;
+    return track(m, b);
   }));
-  grid.hidden = media.length === 0;
 
-  const files = $("files");
-  files.replaceChildren(...others.map((f) => {
-    const inline = f.kind === "text" || f.kind === "audio";
+  $("files").replaceChildren(...others.map((f) => {
+    const inline = inlineViewable(f);
     const row = inline
       ? el("button", { class: "file", type: "button", "data-name": f.name })
       : el("a", { class: "file", href: rawURL(state.path, f.name, f.kind === "other"), target: "_blank", rel: "noopener" });
@@ -346,17 +348,95 @@ function renderList() {
     main.append(el("div", { class: "file-name", text: f.name }));
     main.append(el("div", { class: "file-meta", text: fmtSize(f.size) + " · " + fmtDate(f.mtime) }));
     row.append(main);
-    return row;
+    return track(f, row);
   }));
-  files.hidden = others.length === 0;
 
+  applyFilter();
+}
+
+function inlineViewable(e) {
+  return e.kind === "text" || e.kind === "audio";
+}
+
+// Hides what doesn't match the filter, without rebuilding the page (video
+// tiles would fetch their metadata again on every keystroke).
+function applyFilter() {
+  const q = state.filter;
+  const shown = listed.filter(({ entry }) => !q || entry.name.toLowerCase().includes(q));
+  for (const { node } of listed) node.hidden = true;
+  for (const { node } of shown) node.hidden = false;
+
+  // The viewer walks media first, then inline-viewable files, matching the page order.
+  state.viewable = shown.map((l) => l.entry)
+    .filter((e) => e.kind === "image" || e.kind === "video" || inlineViewable(e));
+
+  if (state.failed) return; // the status message stays, the sections hidden
+  for (const id of ["folders", "grid", "files"]) {
+    $(id).hidden = !shown.some((l) => l.node.parentNode === $(id));
+  }
   const s = $("status");
   if (state.entries.length === 0) {
     s.textContent = "This folder is empty.";
     s.hidden = false;
+  } else if (shown.length === 0) {
+    s.textContent = "Nothing here matches “" + $("filter").value.trim() + "”.";
+    s.hidden = false;
   } else {
     s.hidden = true;
   }
+}
+
+// ---------- filter ----------
+
+function openFilter() {
+  $("filter-bar").hidden = false;
+  $("filter-btn").setAttribute("aria-expanded", "true");
+  $("filter").focus();
+}
+
+// Clears the filter and hides its bar; the caller re-renders if it needs to.
+function closeFilter() {
+  $("filter").value = "";
+  state.filter = "";
+  $("filter-bar").hidden = true;
+  $("filter-btn").setAttribute("aria-expanded", "false");
+}
+
+function setupFilter() {
+  const input = $("filter");
+  $("filter-btn").addEventListener("click", () => {
+    if ($("filter-bar").hidden) {
+      openFilter();
+    } else {
+      closeFilter();
+      applyFilter();
+    }
+  });
+  input.addEventListener("input", () => {
+    state.filter = input.value.trim().toLowerCase();
+    applyFilter();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeFilter();
+      applyFilter();
+    } else if (e.key === "Enter") {
+      input.blur(); // puts the phone keyboard away
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!$("viewer").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+    if (e.key === "/") {
+      e.preventDefault();
+      openFilter();
+    } else if (e.key === "Escape" && !$("filter-bar").hidden) {
+      closeFilter();
+      applyFilter();
+    }
+  });
 }
 
 // ---------- viewer ----------
@@ -708,6 +788,8 @@ function init() {
     else followAnchor(e);
   });
 
+  // Before the viewer's keys, so Escape closing the viewer leaves the filter be.
+  setupFilter();
   document.addEventListener("keydown", (e) => {
     if ($("viewer").hidden) return;
     if (e.key === "Escape") closeViewer(false);
