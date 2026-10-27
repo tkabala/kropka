@@ -11,9 +11,15 @@ const ICONS = {
   audio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm10-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>',
 };
 
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
+// The sort button cycles through these in order. A folder's size is that of its
+// directory entry, not its contents, so "Largest" lists folders by name.
 const SORTS = {
   newest: { label: "Newest", cmp: (a, b) => b.mtime - a.mtime },
-  name: { label: "A–Z", cmp: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) },
+  name: { label: "A–Z", cmp: byName },
+  oldest: { label: "Oldest", cmp: (a, b) => a.mtime - b.mtime },
+  largest: { label: "Largest", cmp: (a, b) => b.size - a.size || byName(a, b), dirs: byName },
 };
 
 const state = {
@@ -303,8 +309,8 @@ function renderSortButton() {
 let listed = [];
 
 function renderList() {
-  const cmp = SORTS[state.sort].cmp;
-  const dirs = state.entries.filter((e) => e.kind === "dir").sort(cmp);
+  const { cmp, dirs: dirCmp = cmp } = SORTS[state.sort];
+  const dirs = state.entries.filter((e) => e.kind === "dir").sort(dirCmp);
   const media = state.entries.filter((e) => e.kind === "image" || e.kind === "video").sort(cmp);
   const others = state.entries.filter((e) => e.kind !== "dir" && e.kind !== "image" && e.kind !== "video").sort(cmp);
   listed = [];
@@ -763,7 +769,8 @@ function init() {
   }).catch(() => {});
 
   $("sort").addEventListener("click", () => {
-    state.sort = state.sort === "newest" ? "name" : "newest";
+    const keys = Object.keys(SORTS);
+    state.sort = keys[(keys.indexOf(state.sort) + 1) % keys.length];
     save("sort", state.sort);
     renderSortButton();
     renderList();

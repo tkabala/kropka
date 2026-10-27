@@ -38,6 +38,30 @@ test("sort order toggles and is remembered", async ({ page, gallery }) => {
   expect(await names(page, ".tile")).toEqual(["a.png", "b.png", "c.png"]);
 });
 
+test("sort cycles through oldest and largest back to newest", async ({ page, gallery }) => {
+  // Noise doesn't compress, so these sizes are a.png > b.png > c.png.
+  await writeFile(join(gallery.dir, "a.png"), png(60, 60, [0, 0, 0], true));
+  await writeFile(join(gallery.dir, "b.png"), png(40, 40, [0, 0, 0], true));
+  await gallery.open();
+  const sort = page.locator("#sort");
+  await sort.click();
+  await sort.click();
+  await expect(sort).toHaveText("Oldest");
+  expect(await names(page, ".folder")).toEqual(["empty", "photos"]);
+  expect(await names(page, ".file")).toEqual(["data.bin", "fetch.py", "notes.md"]);
+
+  await sort.click();
+  await expect(sort).toHaveText("Largest");
+  expect(await names(page, ".folder")).toEqual(["empty", "photos"]);
+  expect(await names(page, ".tile")).toEqual(["a.png", "b.png", "c.png"]);
+  expect(await names(page, ".file")).toEqual(["notes.md", "fetch.py", "data.bin"]);
+
+  await page.reload();
+  await expect(sort).toHaveText("Largest");
+  await sort.click();
+  await expect(sort).toHaveText("Newest");
+});
+
 test("folders open, and back returns", async ({ page, gallery }) => {
   await gallery.open();
   await page.locator(".folder", { hasText: "photos" }).click();
