@@ -83,6 +83,8 @@ jobs:
           cache-dependency-path: e2e/package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # The slideshow's video test makes its clip with ffmpeg and skips without it.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npx playwright test
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
