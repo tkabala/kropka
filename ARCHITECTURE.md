@@ -71,6 +71,15 @@ the phone's error page doesn't say why.
 **Hash routing.** `#/folder?view=file` keeps the server trivial (no SPA fallback) and makes
 the phone's back button close the viewer and walk up folders naturally.
 
+**The slideshow loops and counts from load.** It is for a TV left running, and newest-first
+puts new photos at the start, so only a looping one ever shows what live reload adds. A
+photo's 5 seconds start when it has loaded, so a slow phone still sees each one in full;
+a video moves on when it ends. `showItem()` clears the timer for every item and arms it
+again, so a step, a live reload or a deleted file can't leave a stale one. Anything the user
+does (a step, a key, zooming in, pausing a video) pauses it. It isn't in the URL: a reload
+or the back button leaves it paused. A screen wake lock keeps the display on, but browsers
+only grant it to secure pages, so over plain HTTP on a LAN the screen may sleep.
+
 **No frontend toolchain (for now).** The UI is small enough that vanilla JS keeps the repo
 approachable. Markdown and code highlighting are done on the server (below) partly to keep it
 that way. If the UI grows (PhotoSwipe), the plan is Vite building into `internal/ui/static`,

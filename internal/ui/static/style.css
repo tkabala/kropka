@@ -287,6 +287,7 @@ main {
   z-index: 2;
 }
 .viewer-top .icon-btn { color: #ddd; }
+#v-play svg { fill: currentColor; stroke: none; }
 .viewer-top .icon-btn:hover { background: rgb(255 255 255 / .12); color: #fff; }
 .viewer-count { color: #aaa; font-size: 13px; flex: none; font-variant-numeric: tabular-nums; }
 .viewer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }

@@ -32,6 +32,9 @@ $ kropka
 - **One binary, zero config.** The UI is embedded; no runtime, no config files.
 - **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close,
   pinch or double-tap to zoom.
+- **Slideshow.** The play button in the viewer (or Space) steps through the folder's photos
+  every 5 seconds and loops, playing videos to the end, so a TV can show a folder that is
+  still filling up. The screen stays on while it plays on `localhost` or over HTTPS.
 - **Fast grids.** Large photos get small thumbnails, generated on first view and cached on
   disk, so a folder of 20 MB renders loads like a folder of 40 KB ones. With `ffmpeg`
   installed, videos get one too, a frame from one second in.
@@ -209,7 +212,6 @@ marked breaking with `!`), and they live on the [Releases page](https://github.c
 
 Planned, roughly in this order; details and discussion are in the issues.
 
-- Slideshow in the viewer ([#5](../../issues/5))
 - Keyboard shortcuts help with `?` ([#6](../../issues/6))
 
 All open ideas: [issues labelled `roadmap`](../../issues?q=is%3Aopen+label%3Aroadmap).
