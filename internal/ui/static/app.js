@@ -8,6 +8,7 @@ const $ = (id) => document.getElementById(id);
 const ICONS = {
   folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>',
   audio: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm10-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>',
 };
 
@@ -33,6 +34,7 @@ const state = {
   loadedPath: null,
   failed: false, // the last load ended in an error message, not a listing
   pushed: false, // viewer was opened by a tap, so "back" returns to the folder
+  playing: false, // the slideshow is running
 };
 
 // ---------- helpers ----------
@@ -464,6 +466,7 @@ function openViewer(name) {
 function closeViewer(fromRoute) {
   const v = $("viewer");
   if (v.hidden) return;
+  pauseSlideshow();
   stopMedia();
   v.hidden = true;
   document.body.classList.remove("locked");
@@ -482,8 +485,13 @@ function stopMedia() {
   }
 }
 
+// A step by the user, which pauses the slideshow.
 function go(delta) {
-  const n = state.index + delta;
+  pauseSlideshow();
+  show(state.index + delta);
+}
+
+function show(n) {
   if (n < 0 || n >= state.viewable.length) return;
   // replaceState: stepping through photos shouldn't fill the history
   history.replaceState(null, "", hashFor(state.path, state.viewable[n].name));
@@ -494,6 +502,7 @@ function go(delta) {
 async function showItem() {
   const item = state.viewable[state.index];
   const stage = $("v-stage");
+  clearTimeout(slideTimer);
   stopMedia();
   stage.replaceChildren();
 
@@ -505,11 +514,18 @@ async function showItem() {
   resetZoom(null);
   if (item.kind === "image") {
     const img = el("img", { src, alt: item.name, draggable: "false" });
+    // A slide's time starts once it is on screen, however slow the network.
+    const loaded = () => { if (state.playing && img.isConnected) armSlide(); };
+    img.addEventListener("load", loaded);
+    img.addEventListener("error", loaded);
     stage.append(img);
     resetZoom(img);
     preloadNeighbors();
   } else if (item.kind === "video") {
-    stage.append(el("video", { src, controls: "", autoplay: "", playsinline: "" }));
+    const video = el("video", { src, controls: "", autoplay: "", playsinline: "" });
+    watchVideo(video);
+    stage.append(video);
+    if (state.playing) playVideo(video);
   } else if (item.kind === "audio") {
     stage.append(el("audio", { src, controls: "", autoplay: "" }));
   } else if (item.kind === "text") {
@@ -548,12 +564,112 @@ function updateViewerNav() {
   $("v-count").textContent = state.index + 1 + " / " + state.viewable.length;
   $("v-prev").hidden = state.index === 0;
   $("v-next").hidden = state.index === state.viewable.length - 1;
+  const slides = state.viewable.filter(isSlide).length;
+  $("v-play").hidden = slides < 2;
+  if (slides < 2) pauseSlideshow();
 }
 
 function preloadNeighbors() {
   for (const d of [1, -1]) {
     const e = state.viewable[state.index + d];
     if (e && e.kind === "image") new Image().src = rawURL(state.path, e.name);
+  }
+}
+
+// ---------- slideshow ----------
+
+// Steps through the folder's images and videos, looping, so it can run on a
+// TV. showItem() owns the timer: it clears it for every item and arms it again
+// once an image has loaded; a video moves on when it ends instead.
+const SLIDE_MS = 5000;
+let slideTimer = 0;
+let wakeLock = null;
+
+function isSlide(e) {
+  return e.kind === "image" || e.kind === "video";
+}
+
+// The index of the next image or video, wrapping round, or -1.
+function nextSlide() {
+  const n = state.viewable.length;
+  for (let d = 1; d <= n; d++) {
+    const i = (state.index + d) % n;
+    if (isSlide(state.viewable[i])) return i;
+  }
+  return -1;
+}
+
+function armSlide(ms = SLIDE_MS) {
+  clearTimeout(slideTimer);
+  slideTimer = setTimeout(advance, ms);
+}
+
+function advance() {
+  const n = nextSlide();
+  if (n < 0 || n === state.index) pauseSlideshow();
+  else show(n);
+}
+
+// A video ends the wait for its slide. Pausing it by hand pauses the
+// slideshow; the pause from stopMedia() arrives once it has left the page.
+function watchVideo(video) {
+  video.addEventListener("ended", () => { if (state.playing && video.isConnected) advance(); });
+  video.addEventListener("pause", () => { if (video.isConnected && !video.ended) pauseSlideshow(); });
+  video.addEventListener("error", () => { if (state.playing && video.isConnected) armSlide(); });
+}
+
+function playSlideshow() {
+  state.playing = true;
+  renderPlayButton();
+  lockScreen();
+  const item = state.viewable[state.index];
+  if (!isSlide(item)) {
+    advance();
+  } else if (item.kind === "image") {
+    armSlide();
+  } else {
+    const video = $("v-stage").querySelector("video");
+    if (video.ended) advance();
+    else playVideo(video);
+  }
+}
+
+// Blocked autoplay or a broken file would stall the slideshow: give such a
+// video a slide's time instead.
+function playVideo(video) {
+  video.play().catch(() => { if (state.playing && video.isConnected) armSlide(); });
+}
+
+function pauseSlideshow() {
+  clearTimeout(slideTimer);
+  if (!state.playing) return;
+  state.playing = false;
+  renderPlayButton();
+  if (wakeLock) wakeLock.release().catch(() => {});
+  wakeLock = null;
+}
+
+function toggleSlideshow() {
+  if (state.playing) pauseSlideshow();
+  else if (!$("v-play").hidden) playSlideshow();
+}
+
+function renderPlayButton() {
+  const b = $("v-play");
+  b.innerHTML = state.playing ? ICONS.pause : ICONS.play;
+  b.setAttribute("aria-pressed", String(state.playing));
+}
+
+// Keeps the screen on while playing. Browsers offer it only to secure pages
+// (localhost or HTTPS) and drop it when the tab is hidden.
+async function lockScreen() {
+  if (!navigator.wakeLock || wakeLock) return;
+  try {
+    const lock = await navigator.wakeLock.request("screen");
+    if (state.playing && !wakeLock) wakeLock = lock;
+    else await lock.release();
+  } catch {
+    // Not allowed here (plain HTTP, low battery): the screen may sleep.
   }
 }
 
@@ -612,6 +728,7 @@ function applyZoom(animate) {
   img.style.opacity = "";
   img.style.transform = zoom.s === 1 ? "" : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
   img.classList.toggle("zoomed", zoom.s > 1);
+  if (zoom.s > 1) pauseSlideshow();
 }
 
 function toggleZoom(fx, fy) {
@@ -787,6 +904,8 @@ function init() {
   $("grid").addEventListener("click", openFrom);
   $("files").addEventListener("click", openFrom);
 
+  renderPlayButton();
+  $("v-play").addEventListener("click", toggleSlideshow);
   $("v-close").addEventListener("click", () => closeViewer(false));
   $("v-prev").addEventListener("click", () => go(-1));
   $("v-next").addEventListener("click", () => go(1));
@@ -799,6 +918,13 @@ function init() {
   setupFilter();
   document.addEventListener("keydown", (e) => {
     if ($("viewer").hidden) return;
+    const shortcut = e.ctrlKey || e.metaKey || e.altKey;
+    if (e.key === " " && !shortcut) {
+      e.preventDefault(); // no scrolling, and no click on a focused button
+      toggleSlideshow();
+      return;
+    }
+    if (!shortcut && e.key !== "Shift") pauseSlideshow(); // any other key
     if (e.key === "Escape") closeViewer(false);
     else if (e.key === "ArrowRight") go(1);
     else if (e.key === "ArrowLeft") go(-1);
@@ -812,9 +938,13 @@ function init() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") {
       unwatch();
-    } else if (state.loadedPath !== null) {
-      watch(state.path);
-      refresh();
+      wakeLock = null; // released by the browser
+    } else {
+      if (state.playing) lockScreen();
+      if (state.loadedPath !== null) {
+        watch(state.path);
+        refresh();
+      }
     }
   });
 
