@@ -491,3 +491,44 @@ body.locked { overflow: hidden; }
   font-size: 14px;
   box-shadow: 0 4px 16px rgb(0 0 0 / .35);
 }
+
+/* Keyboard shortcuts help ("?"). No padding on the dialog itself: a click
+   that reaches it is on the backdrop (app.js, setupKeysHelp). */
+.keys {
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .45);
+}
+.keys:focus-visible { outline: none; } /* showModal focuses the box itself */
+.keys::backdrop { background: rgb(0 0 0 / .55); }
+.keys-body { padding: 18px 20px 16px; }
+.keys h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.keys h3 {
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.keys dl { margin: 0; }
+.keys dl div { display: flex; align-items: baseline; gap: 12px; padding: 3px 0; }
+.keys dt { flex: none; width: 76px; }
+.keys dd { margin: 0; }
+.keys-foot { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}

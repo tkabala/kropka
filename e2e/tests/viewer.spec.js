@@ -140,3 +140,51 @@ test("images zoom with the keyboard and a double click", async ({ page, gallery 
   await img.dblclick();
   await expect(img).toHaveCSS("transform", "none");
 });
+
+test('"?" lists the keyboard shortcuts, Esc and a click outside close it', async ({ page, gallery }) => {
+  const help = page.locator("#keys");
+  await gallery.open();
+  await expect(help).toBeHidden();
+
+  await page.keyboard.press("?");
+  await expect(help).toBeVisible();
+  await expect(help.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+  await expect(help).toContainText("Filter by name");
+  await page.keyboard.press("?"); // toggles
+  await expect(help).toBeHidden();
+
+  // While it is open, the folder's keys stand aside.
+  await page.keyboard.press("?");
+  await page.keyboard.press("/");
+  await expect(page.locator("#filter-bar")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+
+  // Typing "?" into the filter is just typing.
+  await page.keyboard.press("/");
+  await page.keyboard.type("a?");
+  await expect(page.locator("#filter")).toHaveValue("a?");
+  await expect(help).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  // In the viewer, Esc closes the help but not the viewer, and so does a
+  // click on the backdrop.
+  await page.locator('.tile[data-name="b.png"]').click();
+  await expect(viewer(page)).toBeVisible();
+  await page.keyboard.press("?");
+  await expect(help).toBeVisible();
+  await page.keyboard.press("ArrowRight"); // no stepping behind the dialog
+  await expect(page.locator("#v-name")).toHaveText("b.png");
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+  await expect(viewer(page)).toBeVisible();
+
+  await page.keyboard.press("?");
+  await help.locator("h2").click(); // inside: stays open
+  await expect(help).toBeVisible();
+  await page.mouse.click(5, 5);
+  await expect(help).toBeHidden();
+  await expect(viewer(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(viewer(page)).toBeHidden();
+});
