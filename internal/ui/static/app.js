@@ -435,7 +435,7 @@ function setupFilter() {
     }
   });
   document.addEventListener("keydown", (e) => {
-    if (!$("viewer").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!$("viewer").hidden || $("keys").open || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest("input, textarea, select, [contenteditable]")) return;
     if (e.key === "/") {
       e.preventDefault();
@@ -444,6 +444,26 @@ function setupFilter() {
       closeFilter();
       applyFilter();
     }
+  });
+}
+
+// ---------- keyboard shortcuts help ----------
+
+// "?" toggles a modal list of the shortcuts. Esc closes it natively (the
+// other key handlers stand aside while it is open, so Esc leaves the viewer
+// and the filter be), and so does a click on the backdrop: a click outside
+// .keys-body lands on the dialog element itself.
+function setupKeysHelp() {
+  const dlg = $("keys");
+  dlg.addEventListener("click", (e) => {
+    if (e.target === dlg) dlg.close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "?" || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+    e.preventDefault();
+    if (dlg.open) dlg.close();
+    else dlg.showModal();
   });
 }
 
@@ -917,7 +937,7 @@ function init() {
   // Before the viewer's keys, so Escape closing the viewer leaves the filter be.
   setupFilter();
   document.addEventListener("keydown", (e) => {
-    if ($("viewer").hidden) return;
+    if ($("viewer").hidden || $("keys").open) return;
     const shortcut = e.ctrlKey || e.metaKey || e.altKey;
     if (e.key === " " && !shortcut) {
       e.preventDefault(); // no scrolling, and no click on a focused button
@@ -933,6 +953,8 @@ function init() {
     else if (e.key === "-") zoomCentre(1 / 1.5);
     else if (e.key === "0") zoomCentre(0);
   });
+  // After the viewer's keys, so "?" pauses a slideshow like any other key.
+  setupKeysHelp();
 
   // Live updates pause while the tab is hidden; catch up when it comes back.
   document.addEventListener("visibilitychange", () => {

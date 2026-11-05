@@ -31,7 +31,8 @@ $ kropka
 
 - **One binary, zero config.** The UI is embedded; no runtime, no config files.
 - **Mobile first.** Photo grid, full-screen viewer, swipe between items, swipe down to close,
-  pinch or double-tap to zoom.
+  pinch or double-tap to zoom. On a computer, the keyboard does the same: press `?` for
+  the list.
 - **Slideshow.** The play button in the viewer (or Space) steps through the folder's photos
   every 5 seconds and loops, playing videos to the end, so a TV can show a folder that is
   still filling up. The screen stays on while it plays on `localhost` or over HTTPS.
@@ -210,9 +211,7 @@ marked breaking with `!`), and they live on the [Releases page](https://github.c
 
 ## Roadmap
 
-Planned, roughly in this order; details and discussion are in the issues.
-
-- Keyboard shortcuts help with `?` ([#6](../../issues/6))
+Nothing is queued right now; ideas and discussion live in the issues.
 
 All open ideas: [issues labelled `roadmap`](../../issues?q=is%3Aopen+label%3Aroadmap).
 Issues marked [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22)
