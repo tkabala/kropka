@@ -1,6 +1,6 @@
 [tools]
 go = "1.27.3"
 goreleaser = "2"
-golangci-lint = "2.14.0"
-biome = "2.5.15"
+golangci-lint = "2.15.0"
+biome = "2.6.5"
 node = "22"

@@ -29,3 +29,17 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(deps)"
+
+  # The Playwright tests and the README demo; neither ships in the binary.
+  - package-ecosystem: npm
+    directories:
+      - /e2e
+      - /docs/demo
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm:
+        patterns:
+          - "*"
