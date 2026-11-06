@@ -92,4 +92,4 @@ changelog:
   sort: asc
   filters:
     # Any case, scoped or not; a breaking change ("chore!:") still shows.
-    exclude: ['(?i)^(docs|test|chore)(\([^)]*\))?:']
+    exclude: ['(?i)^(docs|test|chore|ci)(\([^)]*\))?:']
